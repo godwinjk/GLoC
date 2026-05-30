@@ -197,7 +197,10 @@ mod mode_b {
 
     #[test]
     fn multiple_state_fields_generate_correctly() {
-        let initial = UserCubitState { name: "Alice".into(), age: 30 };
+        let initial = UserCubitState {
+            name: "Alice".into(),
+            age: 30,
+        };
         let c = UserCubit::new(initial);
         assert_eq!(c.state().name, "Alice");
         assert_eq!(c.state().age, 30);
@@ -208,7 +211,7 @@ mod mode_b {
     pub struct SteppedCubit {
         #[state]
         pub count: i32,
-        pub step: i32,   // non-state — remains on cubit, not in generated state
+        pub step: i32, // non-state — remains on cubit, not in generated state
     }
 
     impl SteppedCubit {
@@ -374,7 +377,9 @@ mod suppressions {
         /// Custom constructor with extra validation logic.
         pub fn with_default() -> Self {
             Self {
-                __gloc_state: Config { value: "default".into() },
+                __gloc_state: Config {
+                    value: "default".into(),
+                },
                 __gloc_listeners: Vec::new(),
             }
         }
@@ -389,7 +394,9 @@ mod suppressions {
     #[test]
     fn no_new_cubit_can_emit() {
         let mut c = ConfigCubit::with_default();
-        c.emit(Config { value: "updated".into() });
+        c.emit(Config {
+            value: "updated".into(),
+        });
         assert_eq!(c.state().value, "updated");
     }
 
@@ -399,8 +406,12 @@ mod suppressions {
 
     #[test]
     fn no_observers_cubit_builds_and_transitions() {
-        let mut c = LeanCubit::new(Config { value: "lean".into() });
-        c.emit(Config { value: "updated".into() });
+        let mut c = LeanCubit::new(Config {
+            value: "lean".into(),
+        });
+        c.emit(Config {
+            value: "updated".into(),
+        });
         assert_eq!(c.state().value, "updated");
     }
 
@@ -410,7 +421,11 @@ mod suppressions {
 
     impl BareCubit {
         pub fn bare() -> Self {
-            Self { __gloc_state: Config { value: "bare".into() } }
+            Self {
+                __gloc_state: Config {
+                    value: "bare".into(),
+                },
+            }
         }
     }
 
@@ -418,7 +433,9 @@ mod suppressions {
     fn bare_cubit_works_with_both_suppressions() {
         let mut c = BareCubit::bare();
         assert_eq!(c.state().value, "bare");
-        c.emit(Config { value: "modified".into() });
+        c.emit(Config {
+            value: "modified".into(),
+        });
         assert_eq!(c.state().value, "modified");
     }
 }

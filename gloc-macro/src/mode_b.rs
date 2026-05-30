@@ -66,18 +66,16 @@ pub fn expand(item: &ItemStruct, args: &CubitArgs) -> TokenStream {
     let named_fields = match &item.fields {
         Fields::Named(f) => &f.named,
         // Unit struct with no fields — checked for #[state] below.
-        _ => {
-            return error(
-                item,
-                "#[cubit] requires at least one `#[state]` field, or use `#[cubit(state = SomeType)]` \
+        _ => return error(
+            item,
+            "#[cubit] requires at least one `#[state]` field, or use `#[cubit(state = SomeType)]` \
                  to supply an existing State type.",
-            )
-        }
+        ),
     };
 
     // Partition fields into state fields and regular cubit fields.
     let mut state_fields: Vec<&Field> = Vec::new();
-    let mut cubit_fields: Vec<Field>  = Vec::new();
+    let mut cubit_fields: Vec<Field> = Vec::new();
 
     for field in named_fields {
         let is_state = field.attrs.iter().any(|a| a.path().is_ident("state"));
@@ -98,8 +96,8 @@ pub fn expand(item: &ItemStruct, args: &CubitArgs) -> TokenStream {
         );
     }
 
-    let struct_name  = &item.ident;
-    let vis          = &item.vis;
+    let struct_name = &item.ident;
+    let vis = &item.vis;
     let has_observers = !args.no_observers;
 
     // Build the generated State struct name: e.g. CounterCubit → CounterCubitState
@@ -155,9 +153,17 @@ pub fn expand(item: &ItemStruct, args: &CubitArgs) -> TokenStream {
         }
     };
 
-    let cubit_impl    = impl_cubit(struct_name, &state_type, has_observers);
-    let new_impl      = if args.no_new { quote! {} } else { impl_new(struct_name, &state_type, has_observers, &cubit_fields) };
-    let observer_impl = if has_observers { impl_on_change(struct_name, &state_type) } else { quote! {} };
+    let cubit_impl = impl_cubit(struct_name, &state_type, has_observers);
+    let new_impl = if args.no_new {
+        quote! {}
+    } else {
+        impl_new(struct_name, &state_type, has_observers, &cubit_fields)
+    };
+    let observer_impl = if has_observers {
+        impl_on_change(struct_name, &state_type)
+    } else {
+        quote! {}
+    };
 
     quote! {
         #state_struct

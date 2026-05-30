@@ -58,12 +58,16 @@ pub fn expand(item: &ItemStruct, state_path: &Path, args: &CubitArgs) -> TokenSt
     }
 
     // Guard: mode conflict — #[state] inner fields alongside state = X.
-    let has_state_fields = item.fields.iter().any(|f| {
-        f.attrs.iter().any(|a| a.path().is_ident("state"))
-    });
+    let has_state_fields = item
+        .fields
+        .iter()
+        .any(|f| f.attrs.iter().any(|a| a.path().is_ident("state")));
     if has_state_fields {
+        // Span on the struct *name* (a single token) so the error renders
+        // identically on every rustc version — spanning the whole ItemStruct
+        // causes rustc to draw different bracket styles depending on version.
         return error(
-            item,
+            &item.ident,
             "#[cubit] conflict: `state = SomeType` and `#[state]` fields cannot be used together. \
              Pick one: either supply `state = SomeType` (Mode A) or annotate fields with \
              `#[state]` (Mode B).",
@@ -112,9 +116,17 @@ pub fn expand(item: &ItemStruct, state_path: &Path, args: &CubitArgs) -> TokenSt
         }
     };
 
-    let cubit_impl    = impl_cubit(struct_name, &state_type, has_observers);
-    let new_impl      = if args.no_new { quote! {} } else { impl_new(struct_name, &state_type, has_observers, &named_user_fields) };
-    let observer_impl = if has_observers { impl_on_change(struct_name, &state_type) } else { quote! {} };
+    let cubit_impl = impl_cubit(struct_name, &state_type, has_observers);
+    let new_impl = if args.no_new {
+        quote! {}
+    } else {
+        impl_new(struct_name, &state_type, has_observers, &named_user_fields)
+    };
+    let observer_impl = if has_observers {
+        impl_on_change(struct_name, &state_type)
+    } else {
+        quote! {}
+    };
 
     quote! {
         #rewritten_struct

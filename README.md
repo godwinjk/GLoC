@@ -872,7 +872,7 @@ cargo test -p gloc-macro --test ui_tests
 
 ### CI Pipeline — What Must Pass
 
-Every PR must pass all four jobs. You can replicate the exact CI checks locally using the commands above.
+Every PR must pass all four jobs. You can replicate the exact CI checks locally using the commands below.
 
 | Job | What it checks | Local command |
 |---|---|---|
@@ -880,6 +880,33 @@ Every PR must pass all four jobs. You can replicate the exact CI checks locally 
 | **test** | Unit, integration, doc-tests, trybuild | `cargo test --workspace` |
 | **fmt** | Code formatted with `rustfmt` | `cargo fmt --all -- --check` |
 | **clippy** | No clippy warnings (treated as errors) | `cargo clippy --workspace --all-targets -- -D warnings` |
+
+### Cleaning the Project
+
+Build artifacts accumulate in `target/` and can grow to several gigabytes.
+Clean them before a fresh CI-equivalent run or when diagnosing stale-cache issues.
+
+| Command | What it removes | When to use |
+|---|---|---|
+| `cargo clean` | Entire `target/` directory (all profiles, all crates) | Full clean before a release or when something feels wrong |
+| `cargo clean -p gloc` | Artifacts for the `gloc` crate only | Faster rebuild when only the core crate changed |
+| `cargo clean -p gloc-macro` | Artifacts for `gloc-macro` only | After changing the proc macro |
+| `rm -rf target/release` | Release profile only, keeps debug | Free space without losing incremental debug builds |
+| `rm -rf target/tests` | trybuild test cache only | When UI test snapshots behave unexpectedly |
+
+**Full deep clean** (re-downloads all crates — use sparingly):
+
+```sh
+cargo clean
+rm -rf ~/.cargo/registry/cache
+rm -rf ~/.cargo/registry/src
+```
+
+**Recommended before pushing a PR** — run a clean build to make sure nothing relies on stale artifacts:
+
+```sh
+cargo clean && cargo test --workspace
+```
 
 If CI fails on your PR, check the failing job's log in the Actions tab. Fix
 the issue and push a new commit — CI re-runs automatically. Do not force-push

@@ -51,10 +51,10 @@ impl CounterState {
     fn label_for(count: i32) -> String {
         match count {
             i32::MIN..=-1 => "Negative".into(),
-            0             => "Zero".into(),
-            1..=9         => "Low".into(),
-            10..=99       => "Medium".into(),
-            _             => "High".into(),
+            0 => "Zero".into(),
+            1..=9 => "Low".into(),
+            10..=99 => "Medium".into(),
+            _ => "High".into(),
         }
     }
 }
@@ -211,12 +211,12 @@ mod tests {
     #[test]
     fn label_boundaries_are_correct() {
         let cases = [
-            (-1,  "Negative"),
-            (0,   "Zero"),
-            (1,   "Low"),
-            (9,   "Low"),
-            (10,  "Medium"),
-            (99,  "Medium"),
+            (-1, "Negative"),
+            (0, "Zero"),
+            (1, "Low"),
+            (9, "Low"),
+            (10, "Medium"),
+            (99, "Medium"),
             (100, "High"),
         ];
         for (count, expected_label) in cases {

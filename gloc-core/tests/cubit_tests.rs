@@ -312,9 +312,9 @@ mod custom_cubit {
         cubit.increment(); // 1
         cubit.increment(); // 2
         cubit.decrement(); // 1
-        cubit.add(9);      // 10
-        cubit.reset();     // 0
-        cubit.add(5);      // 5
+        cubit.add(9); // 10
+        cubit.reset(); // 0
+        cubit.add(5); // 5
         assert_eq!(cubit.state().count, 5);
     }
 
@@ -414,7 +414,7 @@ mod injection {
         cubit.emit(CounterState::new(5)); // duplicate — ignored
         cubit.emit(CounterState::new(5)); // duplicate — ignored
         cubit.emit(CounterState::new(6)); // new — recorded
-        // history: [5, 6]
+                                          // history: [5, 6]
         assert_eq!(cubit.history.len(), 2);
         assert_eq!(cubit.history[1].count, 6);
     }

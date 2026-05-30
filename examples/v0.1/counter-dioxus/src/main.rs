@@ -217,11 +217,11 @@ fn button_style(color: &str) -> String {
 fn label_color(label: &str) -> &'static str {
     match label {
         "Negative" => "#7c3aed",
-        "Zero"     => "#6b7280",
-        "Low"      => "#2563eb",
-        "Medium"   => "#d97706",
-        "High"     => "#16a34a",
-        _          => "#6b7280",
+        "Zero" => "#6b7280",
+        "Low" => "#2563eb",
+        "Medium" => "#d97706",
+        "High" => "#16a34a",
+        _ => "#6b7280",
     }
 }
 
@@ -229,11 +229,11 @@ fn label_color(label: &str) -> &'static str {
 fn label_bg(label: &str) -> &'static str {
     match label {
         "Negative" => "#ede9fe",
-        "Zero"     => "#f3f4f6",
-        "Low"      => "#dbeafe",
-        "Medium"   => "#fef3c7",
-        "High"     => "#dcfce7",
-        _          => "#f3f4f6",
+        "Zero" => "#f3f4f6",
+        "Low" => "#dbeafe",
+        "Medium" => "#fef3c7",
+        "High" => "#dcfce7",
+        _ => "#f3f4f6",
     }
 }
 

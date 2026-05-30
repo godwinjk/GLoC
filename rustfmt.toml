@@ -1,0 +1,15 @@
+# rustfmt configuration for GLOC
+#
+# Only stable options are used here so `cargo fmt` works on the stable
+# toolchain used in CI. Nightly-only options are intentionally omitted.
+#
+# IntelliJ / RustRover users: switch to rustfmt as the formatter in
+#   Settings → Languages & Frameworks → Rust → Rustfmt
+#   ☑ Use rustfmt instead of built-in formatter
+#   ☑ Run rustfmt on save   (optional but recommended)
+
+# Must match the edition in Cargo.toml
+edition = "2021"
+
+# Wrap lines at 100 characters (default is 80)
+max_width = 100

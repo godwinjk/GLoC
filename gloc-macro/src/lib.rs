@@ -118,9 +118,10 @@ pub fn cubit(args: TokenStream, input: TokenStream) -> TokenStream {
         // Mode B — generate State from #[state] fields, or emit an error if
         // neither mode has enough information.
         None => {
-            let has_state_fields = item.fields.iter().any(|f| {
-                f.attrs.iter().any(|a| a.path().is_ident("state"))
-            });
+            let has_state_fields = item
+                .fields
+                .iter()
+                .any(|f| f.attrs.iter().any(|a| a.path().is_ident("state")));
 
             if !has_state_fields {
                 from_syn(syn::Error::new_spanned(
