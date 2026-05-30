@@ -1,0 +1,9 @@
+error: No state type found for this cubit.
+
+       Provide one of:
+       • `#[cubit(state = MyStateType)]`  — use an existing State type (Mode A)
+       • `#[state] field: Type` inside the struct  — let gloc generate the State (Mode B)
+ --> tests/ui/fail/no_state_arg_no_annotation.rs:5:8
+  |
+5 | struct BadCubit {}
+  |        ^^^^^^^^

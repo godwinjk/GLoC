@@ -1,0 +1,12 @@
+[package]
+name = "gloc-full"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "GLOC umbrella crate — re-exports gloc-core and gloc-macro for one-line imports."
+
+[dependencies]
+gloc      = { path = "../gloc-core" }
+gloc-macro = { path = "../gloc-macro" }

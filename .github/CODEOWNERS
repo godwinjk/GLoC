@@ -1,0 +1,25 @@
+# CODEOWNERS — defines who must review changes to each part of the repo.
+#
+# Rules are matched top-to-bottom; the last matching rule wins.
+# At least one owner from the matching rule must approve before merging.
+#
+# Docs: https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+
+# --- Global default ---
+# Godwin Joseph owns everything unless a more specific rule below overrides it.
+*                                   @godwinjk
+
+# --- Core library ---
+/gloc-core/                         @godwinjk
+
+# --- Proc macro ---
+/gloc-macro/                        @godwinjk
+
+# --- Umbrella re-export crate ---
+/gloc/                              @godwinjk
+
+# --- Examples ---
+/examples/                          @godwinjk
+
+# --- CI / GitHub configuration ---
+/.github/                           @godwinjk

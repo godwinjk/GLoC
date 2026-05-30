@@ -1,0 +1,138 @@
+# CI — Post-merge verification on `main`
+#
+# Runs immediately after every merge to `main`. This is the source-of-truth
+# build: it confirms the merged commit is healthy end-to-end, independent of
+# the branch CI that ran before the merge.
+#
+# Jobs are identical to the PR gate so any regression introduced by the merge
+# itself (e.g. a conflicting change from another PR) is caught immediately.
+#
+# Jobs:
+#   1. build   — compiles the full workspace (debug + release)
+#   2. test    — runs the entire test suite
+#   3. fmt     — formatting check
+#   4. clippy  — lint check
+
+name: Main — Build & Test
+
+on:
+  push:
+    branches:
+      - main
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+  RUSTFLAGS: "-D warnings"
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Job 1: Build
+  # ---------------------------------------------------------------------------
+  build:
+    name: Build (debug + release)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Install stable Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Cargo dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          # Separate cache key from PR runs so the main cache stays clean.
+          shared-key: "gloc-main-${{ runner.os }}"
+
+      - name: Build workspace (debug)
+        run: cargo build --workspace --locked
+
+      - name: Build workspace (release)
+        run: cargo build --workspace --locked --release
+
+  # ---------------------------------------------------------------------------
+  # Job 2: Test
+  # ---------------------------------------------------------------------------
+  test:
+    name: Test suite
+    runs-on: ubuntu-latest
+    needs: build
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Install stable Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Cargo dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: "gloc-main-${{ runner.os }}"
+
+      - name: Run all tests (unit, integration, doc-tests)
+        run: cargo test --workspace --locked
+
+      - name: Run trybuild UI tests (macro compile-error snapshots)
+        run: cargo test -p gloc-macro --test ui_tests --locked
+
+  # ---------------------------------------------------------------------------
+  # Job 3: Formatting
+  # ---------------------------------------------------------------------------
+  fmt:
+    name: Formatting check
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Install stable Rust toolchain with rustfmt
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+
+  # ---------------------------------------------------------------------------
+  # Job 4: Clippy
+  # ---------------------------------------------------------------------------
+  clippy:
+    name: Clippy lints
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Install stable Rust toolchain with clippy
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+
+      - name: Cache Cargo dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: "gloc-main-${{ runner.os }}"
+
+      - name: Run clippy (deny warnings)
+        run: cargo clippy --workspace --all-targets --locked -- -D warnings
+
+  # ---------------------------------------------------------------------------
+  # Job 5: Notify on failure (main-only)
+  # ---------------------------------------------------------------------------
+  notify-failure:
+    name: Notify on failure
+    runs-on: ubuntu-latest
+    # Only run this job when one of the above jobs fails on main.
+    needs: [build, test, fmt, clippy]
+    if: failure()
+
+    steps:
+      - name: Post failure summary
+        run: |
+          echo "::error::One or more CI jobs failed on main after merge."
+          echo "::error::Check the failed jobs above and push a fix commit immediately."

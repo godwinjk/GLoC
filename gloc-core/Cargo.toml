@@ -1,0 +1,22 @@
+[package]
+name = "gloc"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+keywords.workspace = true
+categories.workspace = true
+description = "A universal business logic architecture for Rust, inspired by the Bloc/Cubit pattern from Flutter."
+readme = "README.md"
+
+[features]
+# Enables tracing::debug! inside emit() for every state transition.
+# Zero cost when disabled — all tracing calls are cfg-gated.
+tracing = ["dep:tracing"]
+
+[dependencies]
+tracing = { version = "0.1", optional = true }
+
+[dev-dependencies]

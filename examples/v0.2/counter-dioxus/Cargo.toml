@@ -1,0 +1,14 @@
+[package]
+name = "counter-dioxus-v02"
+version = "0.1.0"
+edition = "2021"
+description = "Counter example: GLOC Cubit with #[cubit] macro + Dioxus desktop UI (v0.2)"
+
+[[bin]]
+name = "counter-dioxus-v02"
+path = "src/main.rs"
+
+[dependencies]
+gloc       = { path = "../../../gloc-core" }
+gloc-macro = { path = "../../../gloc-macro" }
+dioxus     = { version = "0.7", features = ["desktop"] }

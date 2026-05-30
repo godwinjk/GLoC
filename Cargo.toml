@@ -1,0 +1,18 @@
+[workspace]
+resolver = "2"
+members = [
+    "gloc-core",
+    "gloc-macro",
+    "gloc",
+    "examples/v0.1/counter-dioxus",
+    "examples/v0.2/counter-dioxus",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+authors = ["Godwin Joseph"]
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/godwinjk/gloc"
+keywords = ["state-management", "bloc", "cubit", "architecture", "gloc"]
+categories = ["data-structures", "rust-patterns"]

@@ -1,0 +1,118 @@
+# CI — Pull Request gate
+#
+# Every pull request targeting `main` must pass this workflow before it can
+# be merged. The workflow is also triggered on every push to a PR branch so
+# developers get feedback as they work.
+#
+# Jobs:
+#   1. build   — compiles the full workspace in both debug and release profiles
+#   2. test    — runs the entire test suite (unit, integration, doc, trybuild)
+#   3. fmt     — enforces rustfmt formatting
+#   4. clippy  — enforces clippy lint rules (deny warnings)
+
+name: PR — Build & Test
+
+on:
+  pull_request:
+    branches:
+      - main
+
+# Cancel any in-progress run for the same PR branch when a new commit is pushed.
+concurrency:
+  group: pr-${{ github.head_ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  # Speeds up compile times by caching incremental artifacts across runs.
+  CARGO_INCREMENTAL: 0
+  RUSTFLAGS: "-D warnings"
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Job 1: Build
+  # ---------------------------------------------------------------------------
+  build:
+    name: Build (debug + release)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Install stable Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      # Cache ~/.cargo/registry and the target/ directory to speed up
+      # subsequent runs. The cache key includes the OS and Cargo.lock hash.
+      - name: Cache Cargo dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: "gloc-${{ runner.os }}"
+
+      - name: Build workspace (debug)
+        run: cargo build --workspace --locked
+
+      - name: Build workspace (release)
+        run: cargo build --workspace --locked --release
+
+  test:
+    name: Test suite
+    runs-on: ubuntu-latest
+    # Run tests even if the release build failed — different failure signal.
+    needs: build
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Install stable Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Cargo dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: "gloc-${{ runner.os }}"
+
+      - name: Run all tests (unit, integration, doc-tests)
+        run: cargo test --workspace --locked
+
+      - name: Run trybuild UI tests (macro compile-error snapshots)
+        run: cargo test -p gloc-macro --test ui_tests --locked
+
+  fmt:
+    name: Formatting check
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Install stable Rust toolchain with rustfmt
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+
+  clippy:
+    name: Clippy lints
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Install stable Rust toolchain with clippy
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+
+      - name: Cache Cargo dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: "gloc-${{ runner.os }}"
+
+      - name: Run clippy (deny warnings)
+        run: cargo clippy --workspace --all-targets --locked -- -D warnings

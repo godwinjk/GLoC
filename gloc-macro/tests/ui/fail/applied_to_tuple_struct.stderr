@@ -1,0 +1,5 @@
+error: #[cubit] does not support tuple structs. Use named fields: `struct Foo { ... }`.
+ --> tests/ui/fail/applied_to_tuple_struct.rs:8:18
+  |
+8 | struct TupleCubit(i32);
+  |                  ^^^^^

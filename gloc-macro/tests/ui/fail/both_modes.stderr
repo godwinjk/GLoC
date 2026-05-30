@@ -1,0 +1,5 @@
+error: #[cubit] conflict: `state = SomeType` and `#[state]` fields cannot be used together. Pick one: either supply `state = SomeType` (Mode A) or annotate fields with `#[state]` (Mode B).
+ --> tests/ui/fail/both_modes.rs:8:1
+  |
+8 | struct Conflict {
+  | ^^^^^^

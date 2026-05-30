@@ -1,0 +1,26 @@
+[package]
+name = "gloc-macro"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Procedural macros for GLOC — #[cubit] attribute macro for zero-boilerplate state management."
+
+[lib]
+proc-macro = true
+
+[dependencies]
+syn         = { version = "2.0", features = ["full"] }
+quote       = "1.0"
+proc-macro2 = "1.0"
+darling     = "0.20"
+
+[features]
+# Enables tracing::debug! inside the generated emit() on consumer crates.
+# Consumer adds: gloc-macro = { features = ["tracing"] }
+tracing = []
+
+[dev-dependencies]
+trybuild    = { version = "1.0", features = ["diff"] }
+gloc        = { path = "../gloc-core" }
