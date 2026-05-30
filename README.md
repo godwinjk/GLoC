@@ -16,7 +16,7 @@ a faithful recreation of the [Bloc/Cubit pattern](https://bloclibrary.dev) from 
 [![CI — Main](https://github.com/godwinjk/gloc/actions/workflows/main.yml/badge.svg)](https://github.com/godwinjk/gloc/actions/workflows/main.yml)
 [![Crates.io](https://img.shields.io/crates/v/gloc.svg)](https://crates.io/crates/gloc)
 [![Docs.rs](https://docs.rs/gloc/badge.svg)](https://docs.rs/gloc)
-[![License](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue.svg)](#license)
+[![License](https://img.shields.io/badge/license-MIT-blue.svg)](#license)
 
 </div>
 
@@ -1104,12 +1104,7 @@ acknowledgement in the README, and priority feature requests.
 
 ## License
 
-Licensed under either of:
-
-- [MIT License](LICENSE-MIT)
-- [Apache License, Version 2.0](LICENSE-APACHE)
-
-at your option.
+Licensed under the [MIT License](LICENSE-MIT).
 
 ---
 
