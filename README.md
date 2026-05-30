@@ -2,8 +2,6 @@
 
 # GLOC
 
-**G**odwin's · **L**ogic · **O**rchestration · **C**omponent
-
 _The **G** is intentional — GLOC started as **Godwin's** Business Logic Component,  
 a personal mission to bring the architecture that made Flutter's Bloc legendary  
 into the Rust ecosystem. If it grows into something universal, the G will mean  

@@ -8,6 +8,7 @@ repository.workspace = true
 keywords.workspace = true
 categories.workspace = true
 description = "A universal business logic architecture for Rust, inspired by the Bloc/Cubit pattern from Flutter. Includes core traits and the #[cubit] macro."
+readme = "../../README.md"
 
 [dependencies]
 # path = used in local workspace; version = used when published to crates.io

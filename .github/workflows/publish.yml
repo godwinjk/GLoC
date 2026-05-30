@@ -103,19 +103,19 @@ jobs:
       # Publish in dependency order — crates.io requires deps to exist first.
       # `--no-verify` skips the local build check (already done in CI job above).
 
-      - name: Publish gloc (core)
-        run: cargo publish -p gloc --no-verify --token ${{ secrets.CARGO_REGISTRY_TOKEN }}
+      - name: Publish gloc-core
+        run: cargo publish -p gloc-core --no-verify --token ${{ secrets.CARGO_REGISTRY_TOKEN }}
 
-      # crates.io needs a few seconds to index a newly published crate
-      # before dependents can resolve it.
-      - name: Wait for crates.io to index gloc
-        run: sleep 20
+      # crates.io can take up to 60s to fully index a newly published crate.
+      # Dependents that try to resolve it before indexing completes will fail.
+      - name: Wait for crates.io to index gloc-core
+        run: sleep 60
 
       - name: Publish gloc-macro
         run: cargo publish -p gloc-macro --no-verify --token ${{ secrets.CARGO_REGISTRY_TOKEN }}
 
       - name: Wait for crates.io to index gloc-macro
-        run: sleep 20
+        run: sleep 60
 
       - name: Publish gloc (umbrella)
         run: cargo publish -p gloc --no-verify --token ${{ secrets.CARGO_REGISTRY_TOKEN }}
