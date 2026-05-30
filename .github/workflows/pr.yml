@@ -4,11 +4,13 @@
 # be merged. The workflow is also triggered on every push to a PR branch so
 # developers get feedback as they work.
 #
-# Jobs:
-#   1. build   — compiles the full workspace in both debug and release profiles
-#   2. test    — runs the entire test suite (unit, integration, doc, trybuild)
-#   3. fmt     — enforces rustfmt formatting
-#   4. clippy  — enforces clippy lint rules (deny warnings)
+# Strategy:
+#   - A single `ci` job runs all checks sequentially so the Cargo build
+#     artifacts and apt packages are compiled/installed only once per run.
+#   - Swatinem/rust-cache saves ~/.cargo and target/ between runs so
+#     subsequent pushes to the same PR are fast (only changed crates rebuild).
+#   - apt packages are cached via actions/cache so the 8-package GTK/WebKit
+#     install is skipped on warm runs.
 
 name: PR — Build & Test
 
@@ -28,18 +30,26 @@ env:
   RUSTFLAGS: "-D warnings --cap-lints=warn"
 
 jobs:
-  # ---------------------------------------------------------------------------
-  # Job 1: Build
-  # ---------------------------------------------------------------------------
-  build:
-    name: Build (debug + release)
+  ci:
+    name: Build, Test, Fmt, Clippy
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout source
         uses: actions/checkout@v4
 
-      - name: Install system dependencies (required by Dioxus desktop / WebKit)
+      # ------------------------------------------------------------------
+      # Cache apt packages so GTK/WebKit is only downloaded on first run
+      # ------------------------------------------------------------------
+      - name: Cache apt packages
+        uses: actions/cache@v4
+        id: apt-cache
+        with:
+          path: /var/cache/apt/archives
+          key: apt-webkit-${{ runner.os }}-${{ hashFiles('.github/workflows/pr.yml') }}
+
+      - name: Install system dependencies (GTK / WebKit — required by Dioxus desktop)
+        if: steps.apt-cache.outputs.cache-hit != 'true'
         run: |
           sudo apt-get update -y
           sudo apt-get install -y \
@@ -52,120 +62,56 @@ jobs:
             libayatana-appindicator3-dev \
             librsvg2-dev
 
-      - name: Install stable Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+      - name: Restore cached apt packages (warm run)
+        if: steps.apt-cache.outputs.cache-hit == 'true'
+        run: sudo dpkg -i /var/cache/apt/archives/*.deb 2>/dev/null || true
 
-      # Cache ~/.cargo/registry and the target/ directory to speed up
-      # subsequent runs. The cache key includes the OS and Cargo.lock hash.
-      - name: Cache Cargo dependencies
+      # ------------------------------------------------------------------
+      # Rust toolchain + Cargo cache
+      # ------------------------------------------------------------------
+      - name: Install stable Rust toolchain (rustfmt + clippy included)
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      # Caches ~/.cargo/registry, ~/.cargo/git, and target/ between runs.
+      # Key includes Cargo.lock so the cache is invalidated when deps change.
+      - name: Cache Cargo build artifacts
         uses: Swatinem/rust-cache@v2
         with:
-          shared-key: "gloc-${{ runner.os }}"
+          shared-key: "gloc-pr-${{ runner.os }}"
 
+      # ------------------------------------------------------------------
+      # Step 1: Format check (fast — no compilation needed)
+      # ------------------------------------------------------------------
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+
+      # ------------------------------------------------------------------
+      # Step 2: Build (debug + release)
+      # Subsequent steps reuse the artifacts compiled here.
+      # ------------------------------------------------------------------
       - name: Build workspace (debug)
         run: cargo build --workspace --locked
 
       - name: Build workspace (release)
         run: cargo build --workspace --locked --release
 
-  # ---------------------------------------------------------------------------
-  # Job 2: Test
-  # ---------------------------------------------------------------------------
-  test:
-    name: Test suite
-    runs-on: ubuntu-latest
-    needs: build
-
-    steps:
-      - name: Checkout source
-        uses: actions/checkout@v4
-
-      - name: Install system dependencies (required by Dioxus desktop / WebKit)
-        run: |
-          sudo apt-get update -y
-          sudo apt-get install -y \
-            libgtk-3-dev \
-            libwebkit2gtk-4.1-dev \
-            libglib2.0-dev \
-            libsoup-3.0-dev \
-            libjavascriptcoregtk-4.1-dev \
-            libxdo-dev \
-            libayatana-appindicator3-dev \
-            librsvg2-dev
-
-      - name: Install stable Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Cache Cargo dependencies
-        uses: Swatinem/rust-cache@v2
-        with:
-          shared-key: "gloc-${{ runner.os }}"
-
+      # ------------------------------------------------------------------
+      # Step 3: Tests
+      # ------------------------------------------------------------------
       - name: Run all tests (unit, integration, doc-tests)
         run: cargo test --workspace --locked
 
       - name: Run trybuild UI tests (macro compile-error snapshots)
-        # TRYBUILD=overwrite regenerates .stderr snapshots against the Linux
-        # compiler so platform differences in rustc error formatting never
-        # cause false failures. The compile-fail guarantee (code must not
-        # compile) is still enforced — only exact message matching is relaxed.
+        # TRYBUILD=overwrite regenerates .stderr files against the Linux
+        # compiler — avoids mac/linux formatting differences causing failures.
         env:
           TRYBUILD: overwrite
         run: cargo test -p gloc-macro --test ui_tests --locked
 
-  # ---------------------------------------------------------------------------
-  # Job 3: Formatting
-  # ---------------------------------------------------------------------------
-  fmt:
-    name: Formatting check
-    runs-on: ubuntu-latest
-    # fmt only parses token streams — no compilation, no system libs needed.
-
-    steps:
-      - name: Checkout source
-        uses: actions/checkout@v4
-
-      - name: Install stable Rust toolchain with rustfmt
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          components: rustfmt
-
-      - name: Check formatting
-        run: cargo fmt --all -- --check
-
-  # ---------------------------------------------------------------------------
-  # Job 4: Clippy
-  # ---------------------------------------------------------------------------
-  clippy:
-    name: Clippy lints
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout source
-        uses: actions/checkout@v4
-
-      - name: Install system dependencies (required by Dioxus desktop / WebKit)
-        run: |
-          sudo apt-get update -y
-          sudo apt-get install -y \
-            libgtk-3-dev \
-            libwebkit2gtk-4.1-dev \
-            libglib2.0-dev \
-            libsoup-3.0-dev \
-            libjavascriptcoregtk-4.1-dev \
-            libxdo-dev \
-            libayatana-appindicator3-dev \
-            librsvg2-dev
-
-      - name: Install stable Rust toolchain with clippy
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          components: clippy
-
-      - name: Cache Cargo dependencies
-        uses: Swatinem/rust-cache@v2
-        with:
-          shared-key: "gloc-${{ runner.os }}"
-
+      # ------------------------------------------------------------------
+      # Step 4: Clippy
+      # ------------------------------------------------------------------
       - name: Run clippy (deny warnings)
         run: cargo clippy --workspace --all-targets --locked -- -D warnings
