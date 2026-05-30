@@ -88,24 +88,33 @@ Write your domain logic once, run it everywhere Rust runs.
 
 ## Installation
 
-Add the crates you need to your `Cargo.toml`:
+Add a single dependency — `gloc` includes both the core traits and the `#[cubit]` macro:
 
 ```toml
 [dependencies]
-# Core traits — Cubit, State, CubitBase
 gloc = "0.1"
-
-# Proc macro — #[cubit] attribute (requires gloc as well)
-gloc-macro = "0.1"
 ```
 
-Or, to enable state-transition tracing logs (via the [`tracing`](https://crates.io/crates/tracing) crate):
+Then import everything from one place:
+
+```rust
+use gloc::{cubit, Cubit, State, CubitBase};
+```
+
+**Advanced** — use the individual crates if you only need part of the library:
 
 ```toml
 [dependencies]
-gloc       = { version = "0.1", features = ["tracing"] }
-gloc-macro = { version = "0.1", features = ["tracing"] }
-tracing    = "0.1"
+gloc-core  = "0.1"   # traits only — Cubit, State, CubitBase
+gloc-macro = "0.1"   # #[cubit] macro only
+```
+
+**With tracing** — logs every state transition via the [`tracing`](https://crates.io/crates/tracing) crate:
+
+```toml
+[dependencies]
+gloc    = { version = "0.1", features = ["tracing"] }
+tracing = "0.1"
 ```
 
 ---
@@ -114,7 +123,7 @@ tracing    = "0.1"
 
 ```rust
 use gloc::Cubit;
-use gloc_macro::cubit;
+use gloc::cubit;
 
 // 1. Define your state.
 #[derive(Clone, PartialEq, Debug)]
@@ -328,7 +337,7 @@ Use when your state type already exists or needs custom methods.
 
 ```rust
 use gloc::Cubit;
-use gloc_macro::cubit;
+use gloc::cubit;
 
 // Developer writes the state struct — full control over its shape
 #[derive(Clone, PartialEq, Debug)]
@@ -389,7 +398,7 @@ Use when you want GLOC to generate the state struct for you. Annotate fields wit
 
 ```rust
 use gloc::Cubit;
-use gloc_macro::cubit;
+use gloc::cubit;
 
 #[cubit]
 pub struct UserCubit {
@@ -471,7 +480,7 @@ impl MyCubit {
 Subscribe to state transitions without touching rendering or business logic code:
 
 ```rust
-use gloc_macro::cubit;
+use gloc::cubit;
 
 #[derive(Clone, PartialEq, Debug)]
 struct ScoreState { pub value: u32 }
@@ -594,7 +603,7 @@ The cubit is stored in a Dioxus `Signal` — reads register the component as a s
 ```rust
 // src/cubits/counter.rs — zero Dioxus imports, pure domain logic
 use gloc::Cubit;
-use gloc_macro::cubit;
+use gloc::cubit;
 
 #[derive(Clone, PartialEq, Debug)]
 pub struct CounterState {
@@ -759,7 +768,7 @@ impl Bloc for CounterBloc {
 
 ```
 GLoC/
-├── gloc-core/                  Core crate — published as `gloc`
+├── gloc-core/                  Core crate — published as `gloc-core`
 │   └── src/
 │       ├── lib.rs
 │       ├── state.rs            State trait (blanket impl)
@@ -780,7 +789,7 @@ GLoC/
 │       ├── ui_tests.rs            trybuild runner
 │       └── ui/pass|fail/          9 compile-pass/fail scenarios
 │
-├── gloc/                       Umbrella re-export crate — `gloc-full`
+├── gloc/                       Umbrella crate — published as `gloc`
 │
 ├── examples/
 │   ├── v0.1/counter-dioxus/    Dioxus 0.7 desktop — manual Cubit

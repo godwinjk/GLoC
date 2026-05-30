@@ -20,7 +20,7 @@
 /// # Example
 ///
 /// ```rust
-/// use gloc::State;
+/// use gloc_core::State;
 ///
 /// #[derive(Clone, PartialEq, Debug)]
 /// struct CounterState {

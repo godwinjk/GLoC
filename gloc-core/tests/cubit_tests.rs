@@ -7,7 +7,7 @@
 //! - `injection`     — demonstrates Dependency Inversion via trait objects
 //! - `edge_cases`    — boundary conditions and type variety
 
-use gloc::{Cubit, CubitBase, State};
+use gloc_core::{Cubit, CubitBase, State};
 
 // ---------------------------------------------------------------------------
 // Shared fixtures

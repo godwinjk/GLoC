@@ -3,6 +3,7 @@ name = "counter-dioxus"
 version = "0.1.0"
 edition = "2021"
 description = "Counter example: GLOC Cubit with a Dioxus desktop UI (v0.1)"
+publish = false
 
 [[bin]]
 name = "counter-dioxus"
@@ -10,7 +11,7 @@ path = "src/main.rs"
 
 [dependencies]
 # GLOC — our own workspace crate
-gloc = { path = "../../../gloc-core" }
+gloc = { path = "../../../gloc" }
 
 # Dioxus desktop renderer
 dioxus          = { version = "0.7", features = ["desktop"] }

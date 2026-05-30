@@ -18,7 +18,7 @@
 //! ## Quick start — Cubit
 //!
 //! ```rust
-//! use gloc::{Cubit, State};
+//! use gloc_core::{Cubit, State};
 //!
 //! // 1. Define your state.
 //! #[derive(Clone, PartialEq, Debug)]

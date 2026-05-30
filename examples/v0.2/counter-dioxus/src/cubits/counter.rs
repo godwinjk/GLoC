@@ -18,8 +18,8 @@
 //!
 //! The `impl Cubit`, `new()`, and `on_change()` are all generated automatically.
 
+use gloc::cubit;
 use gloc::Cubit;
-use gloc_macro::cubit;
 
 // ---------------------------------------------------------------------------
 // State — developer-defined (Mode A: bring-your-own)

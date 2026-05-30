@@ -525,7 +525,6 @@ version = "0.1.0"
 dependencies = [
  "dioxus",
  "gloc",
- "gloc-macro",
 ]
 
 [[package]]
@@ -1795,15 +1794,15 @@ dependencies = [
 name = "gloc"
 version = "0.1.0"
 dependencies = [
- "tracing",
+ "gloc-core",
+ "gloc-macro",
 ]
 
 [[package]]
-name = "gloc-full"
+name = "gloc-core"
 version = "0.1.0"
 dependencies = [
- "gloc",
- "gloc-macro",
+ "tracing",
 ]
 
 [[package]]

@@ -1,16 +1,16 @@
-//! # gloc-full
+//! # gloc
 //!
-//! Umbrella crate that re-exports everything from `gloc-core` and `gloc-macro`
-//! so users can add a single dependency and get the full GLOC experience.
+//! The one-stop crate for GLOC — re-exports everything from `gloc-core`
+//! and `gloc-macro` so users only need a single dependency.
 //!
 //! ```toml
 //! [dependencies]
-//! gloc-full = "0.1"
+//! gloc = "0.1"
 //! ```
 //!
 //! ```rust,ignore
-//! use gloc_full::{cubit, Cubit, State};
+//! use gloc::{cubit, Cubit, State};
 //! ```
 
-pub use gloc::*;
+pub use gloc_core::*;
 pub use gloc_macro::*;

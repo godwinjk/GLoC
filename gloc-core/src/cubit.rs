@@ -20,7 +20,7 @@ use crate::state::State;
 /// # Implementing
 ///
 /// ```rust
-/// use gloc::{Cubit, State};
+/// use gloc_core::{Cubit, State};
 ///
 /// #[derive(Clone, PartialEq, Debug)]
 /// struct CounterState {
@@ -75,7 +75,7 @@ pub trait Cubit {
     /// # Example
     ///
     /// ```rust
-    /// # use gloc::{Cubit, State};
+    /// # use gloc_core::{Cubit, State};
     /// # #[derive(Clone, PartialEq, Debug)] struct S(i32);
     /// # struct C { s: S }
     /// # impl Cubit for C { type State = S; fn state(&self) -> &S { &self.s } fn emit(&mut self, s: S) { self.s = s; } }
@@ -98,7 +98,7 @@ pub trait Cubit {
     /// # Example
     ///
     /// ```rust
-    /// # use gloc::{Cubit, State};
+    /// # use gloc_core::{Cubit, State};
     /// # #[derive(Clone, PartialEq, Debug)] struct S(i32);
     /// # struct C { s: S }
     /// # impl Cubit for C { type State = S; fn state(&self) -> &S { &self.s } fn emit(&mut self, s: S) { if &s != &self.s { self.s = s; } } }
@@ -129,7 +129,7 @@ pub trait Cubit {
 /// # Example
 ///
 /// ```rust
-/// use gloc::{Cubit, CubitBase};
+/// use gloc_core::{Cubit, CubitBase};
 ///
 /// let mut cubit = CubitBase::new(0_i32);
 /// assert_eq!(*cubit.state(), 0);
@@ -157,7 +157,7 @@ impl<S: State> CubitBase<S> {
     /// # Example
     ///
     /// ```rust
-    /// use gloc::{Cubit, CubitBase};
+    /// use gloc_core::{Cubit, CubitBase};
     ///
     /// let cubit = CubitBase::new("idle");
     /// assert_eq!(*cubit.state(), "idle");
