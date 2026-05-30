@@ -5,11 +5,9 @@ edition.workspace = true
 authors.workspace = true
 license.workspace = true
 repository.workspace = true
-homepage.workspace = true
 keywords.workspace = true
 categories.workspace = true
 description = "A universal business logic architecture for Rust, inspired by the Bloc/Cubit pattern from Flutter."
-readme = "README.md"
 
 [features]
 # Enables tracing::debug! inside emit() for every state transition.

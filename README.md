@@ -12,8 +12,8 @@ into the Rust ecosystem. If it grows into something universal, the G will mean
 A universal business logic architecture for Rust,  
 a faithful recreation of the [Bloc/Cubit pattern](https://bloclibrary.dev) from Flutter.
 
-[![CI — PR](https://github.com/godwin/gloc/actions/workflows/pr.yml/badge.svg)](https://github.com/godwin/gloc/actions/workflows/pr.yml)
-[![CI — Main](https://github.com/godwin/gloc/actions/workflows/main.yml/badge.svg)](https://github.com/godwin/gloc/actions/workflows/main.yml)
+[![CI — PR](https://github.com/godwinjk/gloc/actions/workflows/pr.yml/badge.svg)](https://github.com/godwinjk/gloc/actions/workflows/pr.yml)
+[![CI — Main](https://github.com/godwinjk/gloc/actions/workflows/main.yml/badge.svg)](https://github.com/godwinjk/gloc/actions/workflows/main.yml)
 [![Crates.io](https://img.shields.io/crates/v/gloc.svg)](https://crates.io/crates/gloc)
 [![Docs.rs](https://docs.rs/gloc/badge.svg)](https://docs.rs/gloc)
 [![License](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue.svg)](#license)
@@ -917,7 +917,7 @@ These standards apply to all contributed code and are enforced in code review:
 
 ### Reporting Bugs
 
-Open a [GitHub Issue](https://github.com/godwin/gloc/issues) and include:
+Open a [GitHub Issue](https://github.com/godwinjk/gloc/issues) and include:
 
 - GLOC version (`cargo tree | grep gloc`)
 - Rust version (`rustc --version`)
@@ -1007,7 +1007,7 @@ The simplest thing you can do. A GitHub star signals to other Rust developers
 that this project is worth their attention, helps GLOC surface in search
 results, and genuinely motivates continued development.
 
-**[→ Star GLOC on GitHub](https://github.com/godwin/gloc)**
+**[→ Star GLOC on GitHub](https://github.com/godwinjk/gloc)**
 
 ---
 
@@ -1023,7 +1023,7 @@ Every share reaches developers who might never have found GLOC otherwise.
 
 ---
 
-### ☕ Buy Godwin a Coffee
+### ☕ Buy me a Coffee
 
 If GLOC has saved you hours of architecture work, consider buying a coffee.
 Every contribution — no matter the size — directly funds time spent on new
@@ -1056,7 +1056,7 @@ Interested in a longer-term sponsorship — for your company, team, or
 open-source fund? Reach out via GitHub to discuss sponsorship tiers,
 acknowledgement in the README, and priority feature requests.
 
-**[→ Open a sponsorship discussion](https://github.com/godwin/gloc/discussions)**
+**[→ Open a sponsorship discussion](https://github.com/godwinjk/gloc/discussions)**
 
 ---
 

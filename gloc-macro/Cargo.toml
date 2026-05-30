@@ -15,11 +15,14 @@ syn         = { version = "2.0", features = ["full"] }
 quote       = "1.0"
 proc-macro2 = "1.0"
 darling     = "0.20"
+tracing     = { version = "0.1", optional = true }
 
 [features]
-# Enables tracing::debug! inside the generated emit() on consumer crates.
-# Consumer adds: gloc-macro = { features = ["tracing"] }
-tracing = []
+# Enables tracing::debug! calls baked into the generated emit() body.
+# The decision is made at macro-expansion time — no #[cfg] leaks into the
+# consumer crate, so consumers need not declare a `tracing` feature themselves.
+# Enable with: gloc-macro = { features = ["tracing"] }
+tracing = ["dep:tracing"]
 
 [dev-dependencies]
 trybuild    = { version = "1.0", features = ["diff"] }

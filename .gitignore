@@ -6,6 +6,7 @@
 # Rust / Cargo
 # -----------------------------------------------------------------------------
 /target/
+Cargo.lock
 # Cargo.lock is committed for binaries (examples); omit for libraries if preferred
 # Cargo.lock
 
