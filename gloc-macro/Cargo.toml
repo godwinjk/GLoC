@@ -6,7 +6,7 @@ authors.workspace = true
 license.workspace = true
 repository.workspace = true
 description = "Procedural macros for GLOC — #[cubit] attribute macro for zero-boilerplate state management."
-readme = "../../README.md"
+readme = "../README.md"
 
 [lib]
 proc-macro = true
