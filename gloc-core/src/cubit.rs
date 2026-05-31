@@ -88,7 +88,7 @@ pub trait Cubit {
     ///
     /// Implementations **should** guard against redundant emissions:
     /// if `next == self.state()` the state should remain unchanged and no
-    /// downstream notification should fire. This mirrors Flutter Bloc's
+    /// downstream notification should fire. Change-detection ensures
     /// behaviour and avoids unnecessary re-renders or side effects.
     ///
     /// # Parameters
@@ -179,7 +179,7 @@ impl<S: State> Cubit for CubitBase<S> {
     ///
     /// This change-detection guard ensures that downstream listeners are not
     /// notified when the logical state has not actually changed, matching the
-    /// semantics of `flutter_bloc`'s `Cubit`.
+    /// no redundant re-renders or side effects.
     fn emit(&mut self, next: S) {
         if next != self.state {
             self.state = next;

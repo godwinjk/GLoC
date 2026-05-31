@@ -3,26 +3,40 @@
 //! Procedural macros for [GLOC](https://github.com/godwinjk/gloc) — the universal business
 //! logic architecture for Rust.
 //!
-//! ## `#[cubit]`
+//! ## `#[reactor_state]`
 //!
-//! The `#[cubit]` attribute macro eliminates all `Cubit` trait boilerplate.
+//! Automatically injects the three required derives (`Clone`, `PartialEq`, `Debug`)
+//! onto any state struct or enum. Extra derives can be passed via `derive(...)`.
+//!
+//! ```rust,ignore
+//! use gloc_macro::reactor_state;
+//!
+//! // Required derives injected automatically
+//! #[reactor_state]
+//! pub struct CounterState { pub count: i32 }
+//!
+//! // Extra derives appended after the required three
+//! #[reactor_state(derive(Hash))]
+//! pub struct TaggedState { pub tag: String }
+//! ```
+//!
+//! ## `#[reactor]`
+//!
+//! The `#[reactor]` attribute macro eliminates all `Reactor` trait boilerplate.
 //! It supports two modes, selectable per struct:
 //!
 //! ### Mode A — bring your own State type
 //!
-//! Supply an existing `Clone + PartialEq + Debug` type via `state = SomeType`.
-//! The macro injects the infrastructure fields and generates all impls.
-//!
 //! ```rust,ignore
-//! use gloc_macro::cubit;
+//! use gloc_macro::{reactor, reactor_state};
 //!
-//! #[derive(Clone, PartialEq, Debug)]
+//! #[reactor_state]
 //! pub struct CounterState { pub count: i32 }
 //!
-//! #[cubit(state = CounterState)]
-//! pub struct CounterCubit {}
+//! #[reactor(state = CounterState)]
+//! pub struct CounterReactor {}
 //!
-//! impl CounterCubit {
+//! impl CounterReactor {
 //!     pub fn increment(&mut self) {
 //!         let next = self.state().count + 1;
 //!         self.emit(CounterState { count: next });
@@ -32,24 +46,12 @@
 //!
 //! ### Mode B — let gloc generate the State struct
 //!
-//! Annotate fields with `#[state]`. The macro generates a
-//! `{CubitName}State` struct from those fields and wires everything up.
-//! Non-`#[state]` fields remain on the cubit as private implementation details.
-//!
 //! ```rust,ignore
-//! use gloc_macro::cubit;
+//! use gloc_macro::reactor;
 //!
-//! #[cubit]
-//! pub struct CounterCubit {
+//! #[reactor]
+//! pub struct CounterReactor {
 //!     #[state] pub count: i32,
-//!     step: i32,   // not managed state — stays on the cubit
-//! }
-//!
-//! impl CounterCubit {
-//!     pub fn increment(&mut self) {
-//!         let next = self.state().count + self.step;
-//!         self.emit(CounterCubitState { count: next });
-//!     }
 //! }
 //! ```
 //!
@@ -57,7 +59,7 @@
 //!
 //! | Generated item | Description |
 //! |---|---|
-//! | `impl Cubit` | `state()`, `emit()` with change-detection |
+//! | `impl Reactor` | `state()`, `emit()` with change-detection |
 //! | `new(initial)` | Constructor (suppress with `no_new`) |
 //! | `on_change(callback)` | Observer registration (suppress with `no_observers`) |
 //! | tracing in `emit()` | State-transition logs (opt-in via `tracing` feature) |
@@ -68,55 +70,82 @@
 //! |---|---|
 //! | `state = SomeType` | Mode A — use this type as the managed state |
 //! | `no_new` | Do not generate `new()` |
-//! | `no_observers` | Do not generate `on_change()` or the listener field |
+//! | `no_observers` | Do not generate `on_change()` or the stream field |
 
 use darling::{ast::NestedMeta, FromMeta};
 use proc_macro::TokenStream;
-use syn::{parse_macro_input, ItemStruct};
+use syn::{parse_macro_input, DeriveInput, ItemStruct};
 
 mod args;
 mod codegen;
 mod errors;
 mod mode_a;
 mod mode_b;
+mod reactor_state;
 
 use args::CubitArgs;
 use errors::from_syn;
 
-/// Zero-boilerplate Cubit implementation generator.
+// ---------------------------------------------------------------------------
+// #[reactor_state]
+// ---------------------------------------------------------------------------
+
+/// Automatically injects `Clone`, `PartialEq`, and `Debug` derives onto a
+/// state struct or enum. Extra derives can be added via `derive(...)`.
 ///
-/// Place `#[cubit]` (Mode B) or `#[cubit(state = SomeType)]` (Mode A) on any
-/// named-field struct to have GLOC generate the full [`gloc::Cubit`] trait
+/// # Examples
+///
+/// ```rust,ignore
+/// // Required derives only
+/// #[reactor_state]
+/// pub struct CounterState { pub count: i32 }
+///
+/// // With extra derives
+/// #[reactor_state(derive(Hash, serde::Serialize))]
+/// pub struct CounterState { pub count: i32 }
+///
+/// // Works on enums too
+/// #[reactor_state]
+/// pub enum LoadingState { Idle, Loading, Done }
+/// ```
+#[proc_macro_attribute]
+pub fn reactor_state(args: TokenStream, input: TokenStream) -> TokenStream {
+    let state_args = match reactor_state::ReactorStateArgs::parse(args.into()) {
+        Ok(a) => a,
+        Err(e) => return TokenStream::from(e.into_compile_error()),
+    };
+
+    let item = parse_macro_input!(input as DeriveInput);
+    TokenStream::from(reactor_state::expand(&state_args, &item))
+}
+
+// ---------------------------------------------------------------------------
+// #[reactor]
+// ---------------------------------------------------------------------------
+
+/// Zero-boilerplate Reactor implementation generator.
+///
+/// Place `#[reactor]` (Mode B) or `#[reactor(state = SomeType)]` (Mode A) on any
+/// named-field struct to have GLoC generate the full [`gloc::Reactor`] trait
 /// implementation, a constructor, and an observer registration method.
 ///
 /// See the [crate-level docs](crate) for full usage examples and the list of
 /// supported arguments.
 #[proc_macro_attribute]
-pub fn cubit(args: TokenStream, input: TokenStream) -> TokenStream {
-    // Parse the raw token stream into a list of nested meta items, then into
-    // our typed CubitArgs struct via darling. This is the syn 2.x approach
-    // (syn::AttributeArgs was removed in syn 2).
+pub fn reactor(args: TokenStream, input: TokenStream) -> TokenStream {
     let attr_args = match NestedMeta::parse_meta_list(args.into()) {
         Ok(v) => v,
         Err(e) => return TokenStream::from(syn::Error::into_compile_error(e)),
     };
-    let cubit_args = match CubitArgs::from_list(&attr_args) {
+    let reactor_args = match CubitArgs::from_list(attr_args.as_slice()) {
         Ok(a) => a,
         Err(e) => return TokenStream::from(e.write_errors()),
     };
 
-    // Parse the annotated struct.
     let item = parse_macro_input!(input as ItemStruct);
 
-    // Guard: macro only supports structs (enforced by parse, but emit a
-    // human-readable error for enums or other items that slip through via
-    // manual TokenStream manipulation).
-    let output = match &cubit_args.state {
-        // Mode A — developer supplied an explicit state type.
-        Some(state_path) => mode_a::expand(&item, state_path, &cubit_args),
-
-        // Mode B — generate State from #[state] fields, or emit an error if
-        // neither mode has enough information.
+    let output = match &reactor_args.state {
+        Some(state_path) => mode_a::expand(&item, state_path, &reactor_args),
         None => {
             let has_state_fields = item
                 .fields
@@ -126,14 +155,14 @@ pub fn cubit(args: TokenStream, input: TokenStream) -> TokenStream {
             if !has_state_fields {
                 from_syn(syn::Error::new_spanned(
                     &item.ident,
-                    "No state type found for this cubit.\n\
+                    "No state type found for this reactor.\n\
                      \n\
                      Provide one of:\n\
-                     • `#[cubit(state = MyStateType)]`  — use an existing State type (Mode A)\n\
+                     • `#[reactor(state = MyStateType)]`  — use an existing State type (Mode A)\n\
                      • `#[state] field: Type` inside the struct  — let gloc generate the State (Mode B)",
                 ))
             } else {
-                mode_b::expand(&item, &cubit_args)
+                mode_b::expand(&item, &reactor_args)
             }
         }
     };

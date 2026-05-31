@@ -1,7 +1,6 @@
-//! # gloc — Global Logic Component
+//! # gloc-core — Global Logic Component
 //!
-//! A universal business logic architecture for Rust, inspired by the
-//! [Bloc/Cubit pattern](https://bloclibrary.dev) from Flutter.
+//! A universal business logic architecture for Rust.
 //!
 //! GLOC provides a clean separation between *business logic* and *presentation*
 //! (or *infrastructure*) that works in **any** Rust application:
@@ -12,13 +11,17 @@
 //! | Concept | Description |
 //! |---------|-------------|
 //! | [`State`] | A snapshot of some domain's data at a point in time. |
-//! | [`Cubit`] | Owns state; exposes methods that call `emit()` to transition it. |
-//! | [`CubitBase`] | A ready-made `Cubit` implementation for simple use-cases. |
+//! | [`Reactor`] | Owns state; exposes methods that call `emit()` to transition it. |
+//! | [`ReactorBase`] | A ready-made `Reactor` implementation for simple use-cases. |
+//! | [`GlocStream`] | A shared, observable state stream. |
+//! | [`GlocConsumer`] | A shared handle for reading and mutating a reactor. |
+//! | [`GlocListener`] | A trait for reacting to state transitions. |
+//! | [`GlocObserver`] | A global observer for all reactor transitions. |
 //!
-//! ## Quick start — Cubit
+//! ## Quick start — Reactor
 //!
 //! ```rust
-//! use gloc_core::{Cubit, State};
+//! use gloc_core::{Reactor, State};
 //!
 //! // 1. Define your state.
 //! #[derive(Clone, PartialEq, Debug)]
@@ -26,12 +29,12 @@
 //!     count: i32,
 //! }
 //!
-//! // 2. Define your cubit.
-//! struct CounterCubit {
+//! // 2. Define your reactor.
+//! struct CounterReactor {
 //!     state: CounterState,
 //! }
 //!
-//! impl CounterCubit {
+//! impl CounterReactor {
 //!     pub fn new() -> Self {
 //!         Self { state: CounterState { count: 0 } }
 //!     }
@@ -52,7 +55,7 @@
 //! }
 //!
 //! // 3. Implement the trait.
-//! impl Cubit for CounterCubit {
+//! impl Reactor for CounterReactor {
 //!     type State = CounterState;
 //!
 //!     fn state(&self) -> &CounterState { &self.state }
@@ -65,7 +68,7 @@
 //! }
 //!
 //! // 4. Use it.
-//! let mut counter = CounterCubit::new();
+//! let mut counter = CounterReactor::new();
 //! counter.increment();
 //! counter.increment();
 //! assert_eq!(counter.state().count, 2);
@@ -79,14 +82,24 @@
 //!
 //! | Phase | Version | Status |
 //! |-------|---------|--------|
-//! | Cubit core | v0.1 | ✅ current |
-//! | `#[cubit]` macro | v0.2 | planned |
-//! | Bloc core | v0.3 | planned |
-//! | `#[bloc]` macro + adapters | v0.4 | planned |
+//! | Reactor core | v0.1 | ✅ current |
+//! | `#[reactor]` macro | v0.2 | planned |
+//! | Event dispatch | v0.3 | planned |
+//! | Adapters (Dioxus, Axum, Bevy) | v0.4 | planned |
 //! | Stable release | v1.0 | planned |
 
-pub mod cubit;
+pub mod consumer;
+pub mod event;
+pub mod listener;
+pub mod observer;
+pub mod reactor;
 pub mod state;
+pub mod stream;
 
-pub use cubit::{Cubit, CubitBase};
+pub use consumer::GlocConsumer;
+pub use event::Event;
+pub use listener::GlocListener;
+pub use observer::{clear_observer, observer, set_observer, GlocObserver};
+pub use reactor::{Reactor, ReactorBase};
 pub use state::State;
+pub use stream::{GlocStream, GlocSubscription};

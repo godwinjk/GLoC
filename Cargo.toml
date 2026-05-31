@@ -4,12 +4,11 @@ members = [
     "gloc-core",
     "gloc-macro",
     "gloc",
-    "examples/v0.1/counter-dioxus",
-    "examples/v0.2/counter-dioxus",
+    "examples/dioxus",
 ]
 
 [workspace.package]
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 authors = ["Godwin Joseph"]
 license = "MIT"

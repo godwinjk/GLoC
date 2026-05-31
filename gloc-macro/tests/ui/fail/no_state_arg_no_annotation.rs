@@ -1,7 +1,7 @@
-use gloc_macro::cubit;
+use gloc_macro::reactor;
 
 // Error: no `state = T` arg and no `#[state]` fields.
-#[cubit]
-struct BadCubit {}
+#[reactor]
+struct BadReactor {}
 
 fn main() {}

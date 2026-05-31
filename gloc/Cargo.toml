@@ -12,5 +12,5 @@ readme = "../README.md"
 
 [dependencies]
 # path = used in local workspace; version = used when published to crates.io
-gloc-core  = { version = "0.1", path = "../gloc-core" }
-gloc-macro = { version = "0.1", path = "../gloc-macro" }
+gloc-core  = { version = "0.2", path = "../gloc-core" }
+gloc-macro = { version = "0.2", path = "../gloc-macro" }

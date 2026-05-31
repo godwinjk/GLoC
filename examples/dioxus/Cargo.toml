@@ -1,0 +1,15 @@
+[package]
+name = "gloc-example-dioxus"
+version = "0.1.0"
+edition = "2021"
+description = "GLOC counter example — Dioxus desktop (always tracks latest API)"
+publish = false
+
+[[bin]]
+name = "gloc-example-dioxus"
+path = "src/main.rs"
+
+[dependencies]
+# umbrella crate — gloc-core + gloc-macro
+gloc   = { path = "../../gloc" }
+dioxus = { version = "0.7", features = ["desktop"] }

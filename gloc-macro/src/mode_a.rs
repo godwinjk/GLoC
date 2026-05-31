@@ -1,6 +1,6 @@
 //! Mode A code generation — bring-your-own State type.
 //!
-//! Activated when the developer supplies `#[cubit(state = SomeType)]`.
+//! Activated when the developer supplies `#[reactor(state = SomeType)]`.
 //! The State struct is **not** generated; the developer is responsible for
 //! defining it (with `Clone + PartialEq + Debug`) wherever they like.
 //!
@@ -11,20 +11,20 @@
 //! #[derive(Clone, PartialEq, Debug)]
 //! struct CounterState { count: i32 }
 //!
-//! #[cubit(state = CounterState)]
-//! struct CounterCubit {}
+//! #[reactor(state = CounterState)]
+//! struct CounterReactor {}
 //! ```
 //!
 //! It produces:
 //! ```rust,ignore
-//! struct CounterCubit {
+//! struct CounterReactor {
 //!     __gloc_state: CounterState,
-//!     __gloc_listeners: Vec<Box<dyn Fn(&CounterState)>>,
+//!     __gloc_stream: ::gloc::GlocStream<CounterState>,
 //! }
 //!
-//! impl ::gloc::Cubit for CounterCubit { ... }
-//! impl CounterCubit { pub fn new(...) -> Self { ... } }
-//! impl CounterCubit { pub fn on_change(...) { ... } }
+//! impl ::gloc::Reactor for CounterReactor { ... }
+//! impl CounterReactor { pub fn new(...) -> Self { ... } }
+//! impl CounterReactor { pub fn on_change(...) { ... } }
 //! ```
 
 use proc_macro2::TokenStream;
@@ -32,14 +32,14 @@ use quote::quote;
 use syn::{Fields, ItemStruct, Path, Type};
 
 use crate::args::CubitArgs;
-use crate::codegen::{impl_cubit, impl_new, impl_on_change, path_to_type};
+use crate::codegen::{impl_dispatch, impl_new, impl_on_change, impl_reactor, path_to_type};
 use crate::errors::error;
 
 /// Entry point for Mode A expansion.
 ///
 /// # Parameters
 ///
-/// - `item`       — the parsed cubit struct from the user's source.
+/// - `item`       — the parsed reactor struct from the user's source.
 /// - `state_path` — the path to the user-supplied State type (from `state = X`).
 /// - `args`       — the full parsed attribute args (for `no_new`, `no_observers`).
 ///
@@ -53,7 +53,7 @@ pub fn expand(item: &ItemStruct, state_path: &Path, args: &CubitArgs) -> TokenSt
     if matches!(item.fields, Fields::Unnamed(_)) {
         return error(
             &item.fields,
-            "#[cubit] does not support tuple structs. Use named fields: `struct Foo { ... }`.",
+            "#[reactor] does not support tuple structs. Use named fields: `struct Foo { ... }`.",
         );
     }
 
@@ -63,12 +63,9 @@ pub fn expand(item: &ItemStruct, state_path: &Path, args: &CubitArgs) -> TokenSt
         .iter()
         .any(|f| f.attrs.iter().any(|a| a.path().is_ident("state")));
     if has_state_fields {
-        // Span on the struct *name* (a single token) so the error renders
-        // identically on every rustc version — spanning the whole ItemStruct
-        // causes rustc to draw different bracket styles depending on version.
         return error(
             &item.ident,
-            "#[cubit] conflict: `state = SomeType` and `#[state]` fields cannot be used together. \
+            "#[reactor] conflict: `state = SomeType` and `#[state]` fields cannot be used together. \
              Pick one: either supply `state = SomeType` (Mode A) or annotate fields with \
              `#[state]` (Mode B).",
         );
@@ -77,7 +74,7 @@ pub fn expand(item: &ItemStruct, state_path: &Path, args: &CubitArgs) -> TokenSt
     let state_type: Type = path_to_type(state_path);
     let struct_name = &item.ident;
     let vis = &item.vis;
-    let attrs = item.attrs.iter().filter(|a| !a.path().is_ident("cubit"));
+    let attrs = item.attrs.iter().filter(|a| !a.path().is_ident("reactor"));
     let has_observers = !args.no_observers;
 
     // Collect user-defined fields (none for Mode A typically, but allowed).
@@ -93,14 +90,14 @@ pub fn expand(item: &ItemStruct, state_path: &Path, args: &CubitArgs) -> TokenSt
 
     // Injected infrastructure fields.
     let state_field = quote! {
-        /// Internal state storage — managed by `#[cubit]`. Do not access directly.
+        /// Internal state storage — managed by `#[reactor]`. Do not access directly.
         __gloc_state: #state_type,
     };
 
-    let listeners_field = if has_observers {
+    let stream_field = if has_observers {
         quote! {
-            /// Registered `on_change` callbacks — managed by `#[cubit]`. Do not access directly.
-            __gloc_listeners: ::std::vec::Vec<::std::boxed::Box<dyn Fn(&#state_type)>>,
+            /// Reactive stream — managed by `#[reactor]`. Do not access directly.
+            __gloc_stream: ::gloc::GlocStream<#state_type>,
         }
     } else {
         quote! {}
@@ -112,11 +109,11 @@ pub fn expand(item: &ItemStruct, state_path: &Path, args: &CubitArgs) -> TokenSt
         #vis struct #struct_name {
             #user_fields
             #state_field
-            #listeners_field
+            #stream_field
         }
     };
 
-    let cubit_impl = impl_cubit(struct_name, &state_type, has_observers);
+    let reactor_impl = impl_reactor(struct_name, &state_type, has_observers);
     let new_impl = if args.no_new {
         quote! {}
     } else {
@@ -128,10 +125,18 @@ pub fn expand(item: &ItemStruct, state_path: &Path, args: &CubitArgs) -> TokenSt
         quote! {}
     };
 
+    let dispatch_impl = if let Some(event_path) = &args.events {
+        let event_type = path_to_type(event_path);
+        impl_dispatch(struct_name, &event_type)
+    } else {
+        quote! {}
+    };
+
     quote! {
         #rewritten_struct
-        #cubit_impl
+        #reactor_impl
         #new_impl
         #observer_impl
+        #dispatch_impl
     }
 }

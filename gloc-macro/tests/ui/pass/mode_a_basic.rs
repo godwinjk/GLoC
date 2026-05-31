@@ -1,13 +1,15 @@
-use gloc::Cubit;
-use gloc_macro::cubit;
+use gloc::Reactor;
+use gloc_macro::reactor;
 
 #[derive(Clone, PartialEq, Debug)]
-struct CounterState { pub count: i32 }
+struct CounterState {
+    pub count: i32,
+}
 
-#[cubit(state = CounterState)]
-struct CounterCubit {}
+#[reactor(state = CounterState)]
+struct CounterReactor {}
 
-impl CounterCubit {
+impl CounterReactor {
     fn increment(&mut self) {
         let next = self.state().count + 1;
         self.emit(CounterState { count: next });
@@ -15,7 +17,7 @@ impl CounterCubit {
 }
 
 fn main() {
-    let mut c = CounterCubit::new(CounterState { count: 0 });
-    c.increment();
-    assert_eq!(c.state().count, 1);
+    let mut r = CounterReactor::new(CounterState { count: 0 });
+    r.increment();
+    assert_eq!(r.state().count, 1);
 }

@@ -1,21 +1,21 @@
-use gloc::Cubit;
-use gloc_macro::cubit;
+use gloc::Reactor;
+use gloc_macro::reactor;
 
-#[cubit]
-struct ToggleCubit {
+#[reactor]
+struct ToggleReactor {
     #[state]
     pub active: bool,
 }
 
-impl ToggleCubit {
+impl ToggleReactor {
     fn toggle(&mut self) {
         let next = !self.state().active;
-        self.emit(ToggleCubitState { active: next });
+        self.emit(ToggleReactorState { active: next });
     }
 }
 
 fn main() {
-    let mut c = ToggleCubit::new(ToggleCubitState { active: false });
-    c.toggle();
-    assert!(c.state().active);
+    let mut r = ToggleReactor::new(ToggleReactorState { active: false });
+    r.toggle();
+    assert!(r.state().active);
 }

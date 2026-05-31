@@ -1,8 +1,8 @@
-use gloc_macro::cubit;
+use gloc_macro::reactor;
 
-// Error: #[cubit] with no `#[state]` fields and no `state = T` arg.
-#[cubit]
-struct NoStateCubit {
+// Error: #[reactor] with no `#[state]` fields and no `state = T` arg.
+#[reactor]
+struct NoStateReactor {
     regular_field: i32,
 }
 

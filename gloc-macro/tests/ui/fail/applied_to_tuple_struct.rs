@@ -1,10 +1,10 @@
-use gloc_macro::cubit;
+use gloc_macro::reactor;
 
 #[derive(Clone, PartialEq, Debug)]
 struct MyState(i32);
 
 // Error: tuple structs are not supported.
-#[cubit(state = MyState)]
-struct TupleCubit(i32);
+#[reactor(state = MyState)]
+struct TupleReactor(i32);
 
 fn main() {}

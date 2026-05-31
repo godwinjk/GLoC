@@ -1,23 +1,23 @@
-use gloc::Cubit;
-use gloc_macro::cubit;
+use gloc::Reactor;
+use gloc_macro::reactor;
 
-// Non-#[state] fields (`step`) stay on the cubit, not in the generated state.
-#[cubit]
-struct StepCubit {
+// Non-#[state] fields (`step`) stay on the reactor, not in the generated state.
+#[reactor]
+struct StepReactor {
     #[state]
     pub count: i32,
     pub step: i32,
 }
 
-impl StepCubit {
+impl StepReactor {
     fn advance(&mut self) {
         let next = self.state().count + self.step;
-        self.emit(StepCubitState { count: next });
+        self.emit(StepReactorState { count: next });
     }
 }
 
 fn main() {
-    let mut c = StepCubit::new(5, StepCubitState { count: 0 });
-    c.advance();
-    assert_eq!(c.state().count, 5);
+    let mut r = StepReactor::new(5, StepReactorState { count: 0 });
+    r.advance();
+    assert_eq!(r.state().count, 5);
 }

@@ -1,0 +1,7 @@
+error[E0599]: no method named `on_event` found for mutable reference `&mut R` in the current scope
+  --> tests/ui/fail/events_missing_on_event.rs:11:1
+   |
+11 | #[reactor(state = S, events = Ev)]
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ method not found in `&mut R`
+   |
+   = note: this error originates in the attribute macro `reactor` (in Nightly builds, run with -Z macro-backtrace for more info)

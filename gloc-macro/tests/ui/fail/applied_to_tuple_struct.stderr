@@ -1,5 +1,5 @@
-error: #[cubit] does not support tuple structs. Use named fields: `struct Foo { ... }`.
- --> tests/ui/fail/applied_to_tuple_struct.rs:8:18
+error: #[reactor] does not support tuple structs. Use named fields: `struct Foo { ... }`.
+ --> tests/ui/fail/applied_to_tuple_struct.rs:8:20
   |
-8 | struct TupleCubit(i32);
-  |                  ^^^^^
+8 | struct TupleReactor(i32);
+  |                    ^^^^^
