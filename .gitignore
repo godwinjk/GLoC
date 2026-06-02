@@ -97,3 +97,4 @@ criterion/
 # so do NOT ignore *.stderr inside tests/ui/fail/
 # But ignore any stray output outside the canonical snapshot directories
 /gloc-macro/tests/ui/**/*.stderr.bak
+CLAUDE.md
