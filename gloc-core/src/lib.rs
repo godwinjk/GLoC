@@ -14,7 +14,7 @@
 //! | [`Reactor`] | Owns state; exposes methods that call `emit()` to transition it. |
 //! | [`ReactorBase`] | A ready-made `Reactor` implementation for simple use-cases. |
 //! | [`GlocStream`] | A shared, observable state stream. |
-//! | [`GlocConsumer`] | A shared handle for reading and mutating a reactor. |
+//! | [`GlocProvider`] | Provides shared read/write access and lifecycle management for a reactor. |
 //! | [`GlocListener`] | A trait for reacting to state transitions. |
 //! | [`GlocObserver`] | A global observer for all reactor transitions. |
 //!
@@ -88,18 +88,18 @@
 //! | Adapters (Dioxus, Axum, Bevy) | v0.4 | planned |
 //! | Stable release | v1.0 | planned |
 
-pub mod consumer;
 pub mod event;
 pub mod listener;
 pub mod observer;
+pub mod provider;
 pub mod reactor;
 pub mod state;
 pub mod stream;
 
-pub use consumer::GlocConsumer;
-pub use event::Event;
+pub use event::{Event, Neutron};
 pub use listener::GlocListener;
 pub use observer::{clear_observer, observer, set_observer, GlocObserver};
+pub use provider::GlocProvider;
 pub use reactor::{Reactor, ReactorBase};
 pub use state::State;
 pub use stream::{GlocStream, GlocSubscription};

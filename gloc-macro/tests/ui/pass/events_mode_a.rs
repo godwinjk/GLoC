@@ -14,19 +14,19 @@ enum CounterEvent {
     AddBy(i32),
 }
 
-#[reactor(state = CounterState, events = CounterEvent)]
+#[reactor(state = CounterState, neutrons = CounterEvent)]
 struct CounterReactor {}
 
 impl CounterReactor {
-    // Direct method — coexists with dispatch
+    // Direct method — coexists with fire()
     pub fn increment(&mut self) {
         self.emit(CounterState {
             count: self.state().count + 1,
         });
     }
 
-    fn on_event(&mut self, event: CounterEvent) {
-        match event {
+    fn on_event(&mut self, neutron: CounterEvent) {
+        match neutron {
             CounterEvent::Increment => self.emit(CounterState {
                 count: self.state().count + 1,
             }),
@@ -47,12 +47,12 @@ fn main() {
     r.increment(); // direct
     assert_eq!(r.state().count, 1);
 
-    r.dispatch(CounterEvent::Increment); // event dispatch
+    r.fire(CounterEvent::Increment); // neutron fire
     assert_eq!(r.state().count, 2);
 
-    r.dispatch(CounterEvent::AddBy(8)); // with payload
+    r.fire(CounterEvent::AddBy(8)); // with payload
     assert_eq!(r.state().count, 10);
 
-    r.dispatch(CounterEvent::Reset);
+    r.fire(CounterEvent::Reset);
     assert_eq!(r.state().count, 0);
 }

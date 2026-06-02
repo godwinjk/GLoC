@@ -24,7 +24,6 @@
 //!
 //! impl ::gloc::Reactor for CounterReactor { ... }
 //! impl CounterReactor { pub fn new(...) -> Self { ... } }
-//! impl CounterReactor { pub fn on_change(...) { ... } }
 //! ```
 
 use proc_macro2::TokenStream;
@@ -32,7 +31,7 @@ use quote::quote;
 use syn::{Fields, ItemStruct, Path, Type};
 
 use crate::args::CubitArgs;
-use crate::codegen::{impl_dispatch, impl_new, impl_on_change, impl_reactor, path_to_type};
+use crate::codegen::{impl_deref, impl_fire, impl_new, impl_reactor, path_to_type};
 use crate::errors::error;
 
 /// Entry point for Mode A expansion.
@@ -75,7 +74,6 @@ pub fn expand(item: &ItemStruct, state_path: &Path, args: &CubitArgs) -> TokenSt
     let struct_name = &item.ident;
     let vis = &item.vis;
     let attrs = item.attrs.iter().filter(|a| !a.path().is_ident("reactor"));
-    let has_observers = !args.no_observers;
 
     // Collect user-defined fields (none for Mode A typically, but allowed).
     let named_user_fields: Vec<syn::Field> = match &item.fields {
@@ -89,18 +87,16 @@ pub fn expand(item: &ItemStruct, state_path: &Path, args: &CubitArgs) -> TokenSt
     };
 
     // Injected infrastructure fields.
+    // `__gloc_state` holds the current state value.
+    // `__gloc_stream` is always present — `GlocObserver` uses it via `emit()`.
     let state_field = quote! {
         /// Internal state storage — managed by `#[reactor]`. Do not access directly.
         __gloc_state: #state_type,
     };
 
-    let stream_field = if has_observers {
-        quote! {
-            /// Reactive stream — managed by `#[reactor]`. Do not access directly.
-            __gloc_stream: ::gloc::GlocStream<#state_type>,
-        }
-    } else {
-        quote! {}
+    let stream_field = quote! {
+        /// Reactive stream — managed by `#[reactor]`. Do not access directly.
+        __gloc_stream: ::gloc::GlocStream<#state_type>,
     };
 
     // Rewrite the struct with injected fields appended.
@@ -113,21 +109,17 @@ pub fn expand(item: &ItemStruct, state_path: &Path, args: &CubitArgs) -> TokenSt
         }
     };
 
-    let reactor_impl = impl_reactor(struct_name, &state_type, has_observers);
+    let reactor_impl = impl_reactor(struct_name, &state_type, true);
     let new_impl = if args.no_new {
         quote! {}
     } else {
-        impl_new(struct_name, &state_type, has_observers, &named_user_fields)
-    };
-    let observer_impl = if has_observers {
-        impl_on_change(struct_name, &state_type)
-    } else {
-        quote! {}
+        impl_new(struct_name, &state_type, true, &named_user_fields)
     };
 
-    let dispatch_impl = if let Some(event_path) = &args.events {
-        let event_type = path_to_type(event_path);
-        impl_dispatch(struct_name, &event_type)
+    let deref_impl = impl_deref(struct_name, &state_type);
+    let fire_impl = if let Some(event_path) = &args.neutrons {
+        let neutron_type = path_to_type(event_path);
+        impl_fire(struct_name, &neutron_type)
     } else {
         quote! {}
     };
@@ -135,8 +127,8 @@ pub fn expand(item: &ItemStruct, state_path: &Path, args: &CubitArgs) -> TokenSt
     quote! {
         #rewritten_struct
         #reactor_impl
+        #deref_impl
         #new_impl
-        #observer_impl
-        #dispatch_impl
+        #fire_impl
     }
 }

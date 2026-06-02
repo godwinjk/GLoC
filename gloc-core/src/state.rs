@@ -1,7 +1,7 @@
 /// A marker trait for any type that can serve as state within a [`Cubit`](crate::Cubit).
 ///
 /// Implementing this trait on a type signals that it is intended to be used as
-/// an immutable snapshot of some domain's state. GLOC does not enforce
+/// an immutable snapshot of some domain's state. GLoC does not enforce
 /// immutability at the language level, but callers are expected to treat emitted
 /// state values as read-only once published.
 ///

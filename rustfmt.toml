@@ -1,4 +1,4 @@
-# rustfmt configuration for GLOC
+# rustfmt configuration for GLoC
 #
 # Only stable options are used here so `cargo fmt` works on the stable
 # toolchain used in CI. Nightly-only options are intentionally omitted.

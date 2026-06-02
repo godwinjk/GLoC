@@ -116,6 +116,11 @@ pub trait Reactor {
     /// assert_eq!(r.state(), &S(1));
     /// ```
     fn emit(&mut self, next: Self::State);
+
+    /// Called by [`GlocProvider::release()`] when the provider releases this reactor.
+    /// Override to clean up resources — close connections, cancel timers, etc.
+    /// Never called when the reactor is used directly without a provider.
+    fn on_close(&mut self) {}
 }
 
 /// A ready-to-use, heap-allocated `Reactor` implementation.

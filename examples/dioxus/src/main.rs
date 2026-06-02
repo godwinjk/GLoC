@@ -6,13 +6,13 @@
 //! | Section | Reactor | Feature |
 //! |---------|---------|---------|
 //! | 1 | `CounterReactor` | `#[reactor]` Mode A — direct method calls |
-//! | 2 | `EventCounterReactor` | `events = E` — event dispatch |
+//! | 2 | `EventCounterReactor` | `neutrons = N` — neutron firing via `fire()` |
 //! | 3 | `ClickTrackerReactor` | `#[reactor]` Mode B — generated state struct |
 //! | 4 | `ThemeReactor` | Enum state + global theme |
 //! | 5 | `CartReactor` | Complex state — multiple fields in one `State` |
 //!
-//! Every reactor registers an `on_change` observer at startup — state
-//! transitions print to the terminal as you interact with the UI.
+//! State transitions are observable via `subscribe()` or `attach_listener()`
+//! and would print to the terminal if wired up at startup.
 
 #![allow(non_snake_case)]
 
@@ -36,60 +36,24 @@ fn main() {
 #[component]
 fn App() -> Element {
     // 1. CounterReactor — Mode A, direct methods
-    let counter = use_signal(|| {
-        let mut r = CounterReactor::new(CounterState::new(0));
-        r.on_change(|_old, s| {
-            println!(
-                "[CounterReactor]      count={:>4}  label={}",
-                s.count, s.label
-            )
-        });
-        r
-    });
+    let counter = use_signal(|| CounterReactor::new(CounterState::new(0)));
 
-    // 2. EventCounterReactor — event dispatch
-    let event_counter = use_signal(|| {
-        let mut r = EventCounterReactor::new(CounterState::new(0));
-        r.on_change(|_old, s| {
-            println!(
-                "[EventCounterReactor] count={:>4}  label={}",
-                s.count, s.label
-            )
-        });
-        r
-    });
+    // 2. EventCounterReactor — neutron firing
+    let event_counter = use_signal(|| EventCounterReactor::new(CounterState::new(0)));
 
     // 3. ClickTrackerReactor — Mode B, generated state
     let tracker = use_signal(|| {
-        let mut r = ClickTrackerReactor::new(ClickTrackerReactorState {
+        ClickTrackerReactor::new(ClickTrackerReactorState {
             total: 0,
             last_action: String::new(),
-        });
-        r.on_change(|_old, s| {
-            println!(
-                "[ClickTrackerReactor] total={:>4}  last={}",
-                s.total, s.last_action
-            )
-        });
-        r
+        })
     });
 
     // 4. ThemeReactor — enum state
-    let theme = use_signal(|| {
-        let mut r = ThemeReactor::new(Theme::Light);
-        r.on_change(|_old, s| println!("[ThemeReactor]        theme={:?}", s));
-        r
-    });
+    let theme = use_signal(|| ThemeReactor::new(Theme::Light));
 
     // 5. CartReactor — complex state
-    let cart = use_signal(|| {
-        let mut r = CartReactor::new(CartState::empty());
-        r.on_change(|_old, s| println!(
-            "[CartReactor]         items={:>2}  subtotal={:.2}  discount={:.0}%  total={:.2}  status={:?}",
-            s.items.len(), s.subtotal, s.discount * 100.0, s.total, s.status
-        ));
-        r
-    });
+    let cart = use_signal(|| CartReactor::new(CartState::empty()));
 
     let bg = theme.read().state().background().to_string();
     let text_color = theme.read().state().text_color().to_string();
@@ -129,11 +93,11 @@ fn App() -> Element {
                     ModeAView { counter, tracker }
                 }
 
-                // Section 2 — Event dispatch
+                // Section 2 — Neutron firing
                 FeatureSection {
                     badge: "Feature 2",
-                    title: "Event Dispatch",
-                    subtitle: "reactor.dispatch(event)  — events = E",
+                    title: "Neutron Firing",
+                    subtitle: "reactor.fire(neutron)  — neutrons = N",
                     card_bg: card_bg.clone(),
                     DispatchView { event_counter, tracker }
                 }
@@ -202,7 +166,7 @@ fn AppHeader(theme: Signal<ThemeReactor>, tracker: Signal<ClickTrackerReactor>) 
                 }
                 p {
                     style: "margin: 0; font-size: 13px; opacity: 0.45;",
-                    "State management for any Rust application  \u{00B7}  on_change prints to terminal"
+                    "State management for any Rust application  \u{00B7}  observers print transitions to terminal"
                 }
             }
 
@@ -311,7 +275,7 @@ fn ModeAView(counter: Signal<CounterReactor>, tracker: Signal<ClickTrackerReacto
 }
 
 // ---------------------------------------------------------------------------
-// Feature 2 — Event dispatch
+// Feature 2 — Neutron firing
 // ---------------------------------------------------------------------------
 
 #[component]
@@ -328,38 +292,38 @@ fn DispatchView(
             p { style: "font-size: 64px; font-weight: 800; margin: 0; line-height: 1;", "{count}" }
             span { style: "font-size: 12px; opacity: 0.45; font-weight: 600;", "{label}" }
 
-            CodeChip { text: "reactor.dispatch(CounterEvent::Increment)" }
+            CodeChip { text: "reactor.fire(CounterEvent::Increment)" }
 
             div { style: "display: flex; gap: 10px; flex-wrap: wrap; justify-content: center;",
                 ActionBtn {
                     color: "#ef4444",
                     onclick: move |_| {
-                        event_counter.write().dispatch(CounterEvent::Decrement);
-                        tracker.write().record("dispatch Decrement");
+                        event_counter.write().fire(CounterEvent::Decrement);
+                        tracker.write().record("fire Decrement");
                     },
                     "−"
                 }
                 ActionBtn {
                     color: "#6b7280",
                     onclick: move |_| {
-                        event_counter.write().dispatch(CounterEvent::Reset);
-                        tracker.write().record("dispatch Reset");
+                        event_counter.write().fire(CounterEvent::Reset);
+                        tracker.write().record("fire Reset");
                     },
                     "Reset"
                 }
                 ActionBtn {
                     color: "#22c55e",
                     onclick: move |_| {
-                        event_counter.write().dispatch(CounterEvent::Increment);
-                        tracker.write().record("dispatch Increment");
+                        event_counter.write().fire(CounterEvent::Increment);
+                        tracker.write().record("fire Increment");
                     },
                     "+"
                 }
                 ActionBtn {
                     color: "#8b5cf6",
                     onclick: move |_| {
-                        event_counter.write().dispatch(CounterEvent::AddBy(5));
-                        tracker.write().record("dispatch AddBy(5)");
+                        event_counter.write().fire(CounterEvent::AddBy(5));
+                        tracker.write().record("fire AddBy(5)");
                     },
                     "+5"
                 }

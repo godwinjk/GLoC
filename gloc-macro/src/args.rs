@@ -10,10 +10,8 @@
 //! ```text
 //! #[reactor]                                          // Mode B — #[state] fields inside struct
 //! #[reactor(state = MyStateType)]                     // Mode A — bring-your-own state type
-//! #[reactor(state = MyStateType, events = MyEvent)]   // Mode A + event dispatch
+//! #[reactor(state = MyStateType, neutrons = MyEvent)]   // Mode A + event dispatch
 //! #[reactor(state = MyStateType, no_new)]             // skip new() generation
-//! #[reactor(state = MyStateType, no_observers)]       // skip on_change() generation
-//! #[reactor(no_new, no_observers)]                    // Mode B with both suppressions
 //! ```
 
 use darling::FromMeta;
@@ -38,17 +36,11 @@ pub struct CubitArgs {
     /// When `Some`, the macro generates `pub fn dispatch(&mut self, event: E)`
     /// which calls `self.on_event(event)`. The user must write `fn on_event`
     /// in any impl block — the macro does not generate the handler body.
-    pub events: Option<Path>,
+    pub neutrons: Option<Path>,
 
     /// When `true`, suppresses generation of the `new(initial: State) -> Self`
     /// constructor. Use this when your reactor needs a custom constructor that
     /// takes extra arguments or performs extra setup.
     #[darling(default)]
     pub no_new: bool,
-
-    /// When `true`, suppresses generation of the `on_change(callback)` observer
-    /// method and the internal `__gloc_stream` field. Use this when you do
-    /// not need reactive subscriptions (e.g. a backend-only reactor).
-    #[darling(default)]
-    pub no_observers: bool,
 }

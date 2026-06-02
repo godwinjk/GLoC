@@ -6,7 +6,9 @@ struct LeanState {
     pub x: f64,
 }
 
-#[reactor(state = LeanState, no_observers)]
+// no_observers was removed; stream is always present now.
+// This test validates a minimal Mode A reactor still works correctly.
+#[reactor(state = LeanState)]
 struct LeanReactor {}
 
 fn main() {

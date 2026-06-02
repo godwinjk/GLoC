@@ -1,34 +1,35 @@
-/// A marker trait for any type that can be dispatched to a [`Reactor`](crate::Reactor).
+/// A neutron fired into a reactor to trigger a state transition.
 ///
-/// Implementing this trait on a type signals that it is intended to be used as
-/// a discrete instruction dispatched to a reactor via `dispatch()`. Unlike
-/// [`State`](crate::State), events are **consumed** — they are moved into the
-/// reactor and processed exactly once, not stored or compared.
+/// Any type that is `Debug + Send + 'static` automatically implements `Neutron`
+/// via the blanket impl — no manual implementation needed.
+///
+/// In nuclear fission, neutrons trigger chain reactions. In GLoC, a `Neutron`
+/// triggers a state transition via [`Reactor::fire()`](crate::Reactor).
 ///
 /// # Requirements
 ///
 /// - [`Debug`]  — required for diagnostics, observer logging, and test output.
-/// - [`Send`]   — events may be dispatched across threads via [`GlocConsumer`](crate::GlocConsumer).
-/// - `'static`  — events may be captured in closures or stored temporarily.
+/// - [`Send`]   — neutrons may be fired across threads via [`GlocProvider`](crate::GlocProvider).
+/// - `'static`  — neutrons may be captured in closures or stored temporarily.
 ///
 /// # Blanket implementation
 ///
 /// Any type that satisfies the three bounds above automatically implements
-/// `Event`, so you never need to write `impl Event for MyEvent {}` yourself.
+/// `Neutron`, so you never need to write `impl Neutron for MyEvent {}` yourself.
 ///
 /// # Comparison with State
 ///
-/// | | [`State`](crate::State) | `Event` |
+/// | | [`State`](crate::State) | `Neutron` |
 /// |---|---|---|
-/// | `Clone` | required — shared via stream | not required — consumed on dispatch |
-/// | `PartialEq` | required — change-detection | not required — events are not compared |
+/// | `Clone` | required — shared via stream | not required — consumed on fire |
+/// | `PartialEq` | required — change-detection | not required — neutrons are not compared |
 /// | `Debug` | required | required |
 /// | `Send` | implicit | required |
 ///
 /// # Example
 ///
 /// ```rust
-/// use gloc_core::Event;
+/// use gloc_core::Neutron;
 ///
 /// #[derive(Debug)]
 /// enum CounterEvent {
@@ -38,10 +39,16 @@
 ///     AddBy(i32),
 /// }
 ///
-/// fn assert_is_event<E: Event>() {}
-/// assert_is_event::<CounterEvent>();
+/// fn assert_is_neutron<N: Neutron>() {}
+/// assert_is_neutron::<CounterEvent>();
 /// ```
-pub trait Event: std::fmt::Debug + Send + 'static {}
+pub trait Neutron: std::fmt::Debug + Send + 'static {}
 
-/// Blanket implementation: every `Debug + Send + 'static` type is an `Event`.
-impl<T: std::fmt::Debug + Send + 'static> Event for T {}
+/// Blanket implementation: every `Debug + Send + 'static` type is a `Neutron`.
+impl<T: std::fmt::Debug + Send + 'static> Neutron for T {}
+
+/// Familiar alias for [`Neutron`] — use whichever name fits your mental model.
+///
+/// `Event` is kept as a type alias so existing code that references `gloc::Event`
+/// continues to compile without modification. New code should prefer [`Neutron`].
+pub type Event = dyn Neutron;

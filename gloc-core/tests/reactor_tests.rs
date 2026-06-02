@@ -1,14 +1,14 @@
 //! Integration tests for the [`Reactor`] trait and [`ReactorBase`] implementation.
 //!
 //! Tests are grouped into logical modules that each cover one concern:
-//! - `event_trait`     — the `Event` blanket implementation and type bounds
+//! - `neutron_trait`   — the `Neutron` blanket implementation and type bounds
 //! - `state_trait`     — the `State` blanket implementation and type bounds
 //! - `reactor_base`    — `ReactorBase` behaviour (emit, change-detection, etc.)
 //! - `custom_reactor`  — verifies that user-defined reactors integrate correctly
 //! - `injection`       — demonstrates Dependency Inversion via trait objects
 //! - `edge_cases`      — boundary conditions and type variety
 
-use gloc_core::{Event, Reactor, ReactorBase, State};
+use gloc_core::{Neutron, Reactor, ReactorBase, State};
 
 // ---------------------------------------------------------------------------
 // Shared fixtures
@@ -74,24 +74,24 @@ impl Reactor for CounterReactor {
 }
 
 // ---------------------------------------------------------------------------
-// Module: event_trait
+// Module: neutron_trait
 // ---------------------------------------------------------------------------
 
-mod event_trait {
+mod neutron_trait {
     use super::*;
 
-    /// Primitive types satisfy `Event` via the blanket impl.
+    /// Primitive types satisfy `Neutron` via the blanket impl.
     #[test]
-    fn primitives_implement_event() {
-        fn assert_event<E: Event>() {}
-        assert_event::<i32>();
-        assert_event::<String>();
-        assert_event::<bool>();
+    fn primitives_implement_neutron() {
+        fn assert_neutron<N: Neutron>() {}
+        assert_neutron::<i32>();
+        assert_neutron::<String>();
+        assert_neutron::<bool>();
     }
 
-    /// Enums with Debug + Send + 'static are Events.
+    /// Enums with Debug + Send + 'static are Neutrons.
     #[test]
-    fn enum_implements_event() {
+    fn enum_implements_neutron() {
         #[derive(Debug)]
         enum CounterEvent {
             Increment,
@@ -100,31 +100,31 @@ mod event_trait {
             AddBy(i32),
         }
 
-        fn assert_event<E: Event>() {}
-        assert_event::<CounterEvent>();
+        fn assert_neutron<N: Neutron>() {}
+        assert_neutron::<CounterEvent>();
     }
 
-    /// Structs with Debug + Send + 'static are Events.
+    /// Structs with Debug + Send + 'static are Neutrons.
     #[test]
-    fn struct_implements_event() {
+    fn struct_implements_neutron() {
         #[derive(Debug)]
         struct SetValue(i32);
 
-        fn assert_event<E: Event>() {}
-        assert_event::<SetValue>();
+        fn assert_neutron<N: Neutron>() {}
+        assert_neutron::<SetValue>();
     }
 
-    /// Events do NOT require Clone or PartialEq — unlike State.
+    /// Neutrons do NOT require Clone or PartialEq — unlike State.
     #[test]
-    fn event_does_not_require_clone_or_partialeq() {
-        // This type has no Clone or PartialEq — must still be an Event.
+    fn neutron_does_not_require_clone_or_partialeq() {
+        // This type has no Clone or PartialEq — must still be a Neutron.
         #[derive(Debug)]
-        struct NonCloneEvent {
+        struct NonCloneNeutron {
             payload: String,
         }
 
-        fn assert_event<E: Event>() {}
-        assert_event::<NonCloneEvent>();
+        fn assert_neutron<N: Neutron>() {}
+        assert_neutron::<NonCloneNeutron>();
     }
 }
 

@@ -61,7 +61,6 @@
 //! |---|---|
 //! | `impl Reactor` | `state()`, `emit()` with change-detection |
 //! | `new(initial)` | Constructor (suppress with `no_new`) |
-//! | `on_change(callback)` | Observer registration (suppress with `no_observers`) |
 //! | tracing in `emit()` | State-transition logs (opt-in via `tracing` feature) |
 //!
 //! ### Attribute arguments
@@ -70,7 +69,6 @@
 //! |---|---|
 //! | `state = SomeType` | Mode A — use this type as the managed state |
 //! | `no_new` | Do not generate `new()` |
-//! | `no_observers` | Do not generate `on_change()` or the stream field |
 
 use darling::{ast::NestedMeta, FromMeta};
 use proc_macro::TokenStream;

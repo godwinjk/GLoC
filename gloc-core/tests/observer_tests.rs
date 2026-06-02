@@ -1,14 +1,13 @@
 //! Integration tests for [`GlocObserver`] — the global transition interceptor.
 //!
-//! `on_transition` is fired by `GlocConsumer::update()` — tested directly here.
+//! `on_transition` is fired by `GlocProvider::update()` — tested directly here.
 //! `on_create` and `on_close` are framework-adapter lifecycle hooks fired by
-//! `GlocProvider`, which lives in adapter crates (e.g. `gloc-dioxus`). Those
-//! lifecycle tests belong there, not in core.
+//! `GlocProvider`. `on_close` can also be triggered via `GlocProvider::release()`.
 //!
 //! Every test runs serially to avoid global-observer state leakage.
 
 use gloc_core::{
-    clear_observer, observer, set_observer, GlocConsumer, GlocObserver, GlocStream, Reactor,
+    clear_observer, observer, set_observer, GlocObserver, GlocProvider, GlocStream, Reactor,
 };
 use std::sync::{Arc, Mutex};
 
@@ -47,11 +46,11 @@ impl Reactor for R {
     }
 }
 
-/// Builds a `GlocConsumer<R>` directly — no Provider needed.
-fn make_consumer(initial: i32) -> GlocConsumer<R> {
+/// Builds a `GlocProvider<R>` directly — no Provider needed.
+fn make_consumer(initial: i32) -> GlocProvider<R> {
     let reactor = Arc::new(Mutex::new(R::new(initial)));
     let stream = GlocStream::new(S(initial));
-    GlocConsumer::new(reactor, stream)
+    GlocProvider::new(reactor, stream)
 }
 
 // ---------------------------------------------------------------------------

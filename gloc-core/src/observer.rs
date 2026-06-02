@@ -136,7 +136,7 @@ pub fn set_observer(observer: impl GlocObserver) {
 /// Returns `None` with zero cost if no observer has been set — the
 /// `OnceLock` is still uninitialised in that case.
 ///
-/// Used internally by `GlocConsumer` and the `#[reactor]` macro.
+/// Used internally by `GlocProvider` and the `#[reactor]` macro.
 pub fn observer() -> Option<Arc<dyn GlocObserver>> {
     OBSERVER.get()?.read().unwrap().clone()
 }

@@ -31,7 +31,6 @@
 //!
 //! impl ::gloc::Reactor for CounterReactor { ... }
 //! impl CounterReactor { pub fn new(...) -> Self { ... } }
-//! impl CounterReactor { pub fn on_change(...) { ... } }
 //! ```
 
 use proc_macro2::{Ident, Span, TokenStream};
@@ -39,7 +38,7 @@ use quote::quote;
 use syn::{Field, Fields, ItemStruct, Type};
 
 use crate::args::CubitArgs;
-use crate::codegen::{impl_dispatch, impl_new, impl_on_change, impl_reactor, path_to_type};
+use crate::codegen::{impl_deref, impl_fire, impl_new, impl_reactor, path_to_type};
 use crate::errors::error;
 
 /// Entry point for Mode B expansion.
@@ -97,7 +96,6 @@ pub fn expand(item: &ItemStruct, args: &CubitArgs) -> TokenStream {
 
     let struct_name = &item.ident;
     let vis = &item.vis;
-    let has_observers = !args.no_observers;
 
     // Build the generated State struct name: e.g. CounterReactor → CounterReactorState
     let state_name = Ident::new(&format!("{}State", struct_name), Span::call_site());
@@ -128,15 +126,13 @@ pub fn expand(item: &ItemStruct, args: &CubitArgs) -> TokenStream {
     let state_type: Type = syn::parse_quote!(#state_name);
 
     // Infrastructure fields injected into the reactor struct.
+    // `__gloc_state` holds the current state value.
+    // `__gloc_stream` is always present — `GlocObserver` uses it via `emit()`.
     let state_field = quote! {
         __gloc_state: #state_name,
     };
-    let stream_field = if has_observers {
-        quote! {
-            __gloc_stream: ::gloc::GlocStream<#state_name>,
-        }
-    } else {
-        quote! {}
+    let stream_field = quote! {
+        __gloc_stream: ::gloc::GlocStream<#state_name>,
     };
 
     // Filter reactor-level attrs (strip the #[reactor] attribute itself).
@@ -152,21 +148,17 @@ pub fn expand(item: &ItemStruct, args: &CubitArgs) -> TokenStream {
         }
     };
 
-    let reactor_impl = impl_reactor(struct_name, &state_type, has_observers);
+    let reactor_impl = impl_reactor(struct_name, &state_type, true);
     let new_impl = if args.no_new {
         quote! {}
     } else {
-        impl_new(struct_name, &state_type, has_observers, &reactor_fields)
-    };
-    let observer_impl = if has_observers {
-        impl_on_change(struct_name, &state_type)
-    } else {
-        quote! {}
+        impl_new(struct_name, &state_type, true, &reactor_fields)
     };
 
-    let dispatch_impl = if let Some(event_path) = &args.events {
-        let event_type = path_to_type(event_path);
-        impl_dispatch(struct_name, &event_type)
+    let deref_impl = impl_deref(struct_name, &state_type);
+    let fire_impl = if let Some(event_path) = &args.neutrons {
+        let neutron_type = path_to_type(event_path);
+        impl_fire(struct_name, &neutron_type)
     } else {
         quote! {}
     };
@@ -175,8 +167,8 @@ pub fn expand(item: &ItemStruct, args: &CubitArgs) -> TokenStream {
         #state_struct
         #rewritten_struct
         #reactor_impl
+        #deref_impl
         #new_impl
-        #observer_impl
-        #dispatch_impl
+        #fire_impl
     }
 }

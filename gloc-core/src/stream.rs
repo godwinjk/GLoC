@@ -6,7 +6,7 @@
 //!
 //! Built entirely on `std` — no third-party runtime or async dependencies.
 //! `Arc<Mutex<_>>` provides thread-safe shared ownership so multiple
-//! [`GlocSubscription`]s and [`GlocConsumer`](crate::consumer::GlocConsumer)s
+//! [`GlocSubscription`]s and [`GlocProvider`](crate::provider::GlocProvider)s
 //! can all observe the same stream independently.
 //!
 //! # Design

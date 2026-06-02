@@ -123,7 +123,7 @@ impl CartState {
 /// A single cubit owns a state with multiple fields — items, totals,
 /// discount, and status all live in one `CartState` snapshot.
 ///
-/// The macro generates `new()`, `impl Reactor`, and `on_change()`.
+/// The macro generates `new()` and `impl Reactor`.
 #[reactor(state = CartState)]
 pub struct CartReactor {}
 

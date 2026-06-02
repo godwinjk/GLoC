@@ -7,10 +7,9 @@
 //! - `mode_a`       — `#[reactor(state = SomeType)]` bring-your-own state
 //! - `mode_b`       — `#[state]` field annotation, generated state struct
 //! - `change_det`   — change-detection behaviour (shared across modes)
-//! - `observers`    — `on_change` callback behaviour
-//! - `suppressions` — `no_new` and `no_observers` flags
+//! - `suppressions` — `no_new` flag
 //! - `injection`    — dependency inversion via trait objects
-//! - `dispatch`     — `events = E` argument and generated `dispatch()` method
+//! - `dispatch`     — `neutrons = E` argument and generated `dispatch()` method
 
 use gloc::Reactor;
 use gloc_macro::reactor;
@@ -284,87 +283,7 @@ mod change_det {
 }
 
 // ---------------------------------------------------------------------------
-// Module: observers — on_change callback behaviour
-// ---------------------------------------------------------------------------
-
-mod observers {
-    use super::*;
-    use std::sync::{Arc, Mutex};
-
-    #[derive(Clone, PartialEq, Debug)]
-    pub struct Val(i32);
-
-    #[reactor(state = Val)]
-    pub struct ObsReactor {}
-
-    /// `on_change` callback fires when state transitions.
-    #[test]
-    fn on_change_fires_on_transition() {
-        let mut r = ObsReactor::new(Val(0));
-        let fired = Arc::new(Mutex::new(false));
-        let fired_clone = fired.clone();
-
-        r.on_change(move |_old, _new| *fired_clone.lock().unwrap() = true);
-        r.emit(Val(1));
-
-        assert!(
-            *fired.lock().unwrap(),
-            "on_change callback should have fired"
-        );
-    }
-
-    /// `on_change` does NOT fire when state is unchanged (change-detection).
-    #[test]
-    fn on_change_does_not_fire_on_noop_emit() {
-        let mut r = ObsReactor::new(Val(5));
-        let count = Arc::new(Mutex::new(0_u32));
-        let count_clone = count.clone();
-
-        r.on_change(move |_old, _new| *count_clone.lock().unwrap() += 1);
-        r.emit(Val(5)); // no-op
-        r.emit(Val(5)); // no-op
-
-        assert_eq!(
-            *count.lock().unwrap(),
-            0,
-            "callback must not fire for no-op emits"
-        );
-    }
-
-    /// Multiple `on_change` callbacks all fire in registration order.
-    #[test]
-    fn multiple_observers_fire_in_order() {
-        let mut r = ObsReactor::new(Val(0));
-        let log: Arc<Mutex<Vec<i32>>> = Arc::new(Mutex::new(Vec::new()));
-
-        let log1 = log.clone();
-        r.on_change(move |_old, v| log1.lock().unwrap().push(v.0 * 10));
-
-        let log2 = log.clone();
-        r.on_change(move |_old, v| log2.lock().unwrap().push(v.0 * 100));
-
-        r.emit(Val(1));
-        r.emit(Val(2));
-
-        assert_eq!(*log.lock().unwrap(), vec![10, 100, 20, 200]);
-    }
-
-    /// `on_change` receives both old and new state values.
-    #[test]
-    fn on_change_receives_old_and_new_state() {
-        let mut r = ObsReactor::new(Val(0));
-        let transitions: Arc<Mutex<Vec<(i32, i32)>>> = Arc::new(Mutex::new(Vec::new()));
-        let trans_clone = transitions.clone();
-
-        r.on_change(move |old, new| trans_clone.lock().unwrap().push((old.0, new.0)));
-        r.emit(Val(42));
-
-        assert_eq!(*transitions.lock().unwrap(), vec![(0, 42)]);
-    }
-}
-
-// ---------------------------------------------------------------------------
-// Module: suppressions — no_new and no_observers
+// Module: suppressions — no_new flag
 // ---------------------------------------------------------------------------
 
 mod suppressions {
@@ -406,45 +325,6 @@ mod suppressions {
             value: "updated".into(),
         });
         assert_eq!(r.state().value, "updated");
-    }
-
-    /// `no_observers` — macro skips `on_change` and the stream field.
-    #[reactor(state = Config, no_observers)]
-    pub struct LeanReactor {}
-
-    #[test]
-    fn no_observers_reactor_builds_and_transitions() {
-        let mut r = LeanReactor::new(Config {
-            value: "lean".into(),
-        });
-        r.emit(Config {
-            value: "updated".into(),
-        });
-        assert_eq!(r.state().value, "updated");
-    }
-
-    /// Both suppressions together — developer writes new() and skips observers.
-    #[reactor(state = Config, no_new, no_observers)]
-    pub struct BareReactor {}
-
-    impl BareReactor {
-        pub fn bare() -> Self {
-            Self {
-                __gloc_state: Config {
-                    value: "bare".into(),
-                },
-            }
-        }
-    }
-
-    #[test]
-    fn bare_reactor_works_with_both_suppressions() {
-        let mut r = BareReactor::bare();
-        assert_eq!(r.state().value, "bare");
-        r.emit(Config {
-            value: "modified".into(),
-        });
-        assert_eq!(r.state().value, "modified");
     }
 }
 
@@ -501,7 +381,7 @@ mod injection {
 }
 
 // ---------------------------------------------------------------------------
-// Module: dispatch — events = E argument and generated dispatch() method
+// Module: dispatch — neutrons = E argument and generated dispatch() method
 // ---------------------------------------------------------------------------
 
 mod dispatch {
@@ -519,7 +399,7 @@ mod dispatch {
         Set(i32),
     }
 
-    #[reactor(state = S, events = Ev)]
+    #[reactor(state = S, neutrons = Ev)]
     pub struct R {}
 
     impl R {
@@ -541,38 +421,31 @@ mod dispatch {
     #[test]
     fn dispatch_increment() {
         let mut r = R::new(S(0));
-        r.dispatch(Ev::Inc);
+        r.fire(Ev::Inc);
         assert_eq!(r.state(), &S(1));
     }
 
     #[test]
     fn dispatch_decrement() {
         let mut r = R::new(S(10));
-        r.dispatch(Ev::Dec);
+        r.fire(Ev::Dec);
         assert_eq!(r.state(), &S(9));
     }
 
     #[test]
     fn dispatch_with_payload() {
         let mut r = R::new(S(0));
-        r.dispatch(Ev::Set(42));
+        r.fire(Ev::Set(42));
         assert_eq!(r.state(), &S(42));
     }
 
-    /// change-detection still fires through dispatch — redundant emit is a no-op.
+    /// change-detection still applies through dispatch — redundant emit is a no-op.
     #[test]
     fn dispatch_no_op_same_state() {
         let mut r = R::new(S(5));
-        let fired = std::sync::Arc::new(std::sync::Mutex::new(false));
-        let f = fired.clone();
-        r.on_change(move |_, _| *f.lock().unwrap() = true);
-
-        r.dispatch(Ev::Set(5)); // same value — no-op
-
-        assert!(
-            !*fired.lock().unwrap(),
-            "on_change must not fire for a no-op dispatch"
-        );
+        // Emit the same value — state must not change.
+        r.fire(Ev::Set(5)); // same value — no-op
+        assert_eq!(r.state(), &S(5));
     }
 
     /// Direct method and dispatch work on the same reactor without conflict.
@@ -580,26 +453,20 @@ mod dispatch {
     fn direct_and_dispatch_coexist() {
         let mut r = R::new(S(0));
         r.increment(); // direct → 1
-        r.dispatch(Ev::Inc); // dispatch → 2
-        r.dispatch(Ev::Set(10)); // dispatch with payload → 10
+        r.fire(Ev::Inc); // dispatch → 2
+        r.fire(Ev::Set(10)); // dispatch with payload → 10
         r.increment(); // direct → 11
         assert_eq!(r.state(), &S(11));
     }
 
-    /// dispatch() result propagates through on_change listeners.
+    /// dispatch() transitions update the state correctly across multiple events.
     #[test]
-    fn dispatch_fires_on_change() {
-        use std::sync::{Arc, Mutex};
+    fn dispatch_multiple_transitions() {
         let mut r = R::new(S(0));
-        let log: Arc<Mutex<Vec<(i32, i32)>>> = Arc::new(Mutex::new(vec![]));
-        let log_c = log.clone();
-        r.on_change(move |old, new| log_c.lock().unwrap().push((old.0, new.0)));
-
-        r.dispatch(Ev::Inc); // 0 → 1
-        r.dispatch(Ev::Set(5)); // 1 → 5
-        r.dispatch(Ev::Inc); // 5 → 6
-
-        assert_eq!(*log.lock().unwrap(), vec![(0, 1), (1, 5), (5, 6)]);
+        r.fire(Ev::Inc); // 0 → 1
+        r.fire(Ev::Set(5)); // 1 → 5
+        r.fire(Ev::Inc); // 5 → 6
+        assert_eq!(r.state(), &S(6));
     }
 
     /// Reactor with events still satisfies the Reactor trait object.
@@ -619,7 +486,7 @@ mod dispatch {
         SetOff,
     }
 
-    #[reactor(events = ToggleEv)]
+    #[reactor(neutrons = ToggleEv)]
     pub struct ToggleReactor {
         #[state]
         pub active: bool,
@@ -640,13 +507,13 @@ mod dispatch {
     #[test]
     fn mode_b_dispatch_works() {
         let mut r = ToggleReactor::new(ToggleReactorState { active: false });
-        r.dispatch(ToggleEv::Toggle);
+        r.fire(ToggleEv::Toggle);
         assert!(r.state().active);
-        r.dispatch(ToggleEv::Toggle);
+        r.fire(ToggleEv::Toggle);
         assert!(!r.state().active);
-        r.dispatch(ToggleEv::SetOn);
+        r.fire(ToggleEv::SetOn);
         assert!(r.state().active);
-        r.dispatch(ToggleEv::SetOff);
+        r.fire(ToggleEv::SetOff);
         assert!(!r.state().active);
     }
 }

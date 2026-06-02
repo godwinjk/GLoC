@@ -1,6 +1,6 @@
 //! `ThemeReactor` — manages the app's visual theme (Light / Dark).
 //!
-//! Demonstrates a simple enum state with GLOC. The cubit holds no extra
+//! Demonstrates a simple enum state with GLoC. The cubit holds no extra
 //! fields — it only owns the current theme and exposes a single `toggle()`.
 
 use gloc::reactor;
@@ -57,7 +57,7 @@ impl Theme {
 
 /// Manages the app's visual theme.
 ///
-/// The macro generates `new()`, `impl Reactor`, and `on_change()`.
+/// The macro generates `new()` and `impl Reactor`.
 #[reactor(state = Theme)]
 pub struct ThemeReactor {}
 

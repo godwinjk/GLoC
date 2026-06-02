@@ -1,10 +1,10 @@
 //! Integration tests for the reactive layer:
-//! `GlocStream`, `GlocSubscription`, `GlocConsumer`, `GlocListener`.
+//! `GlocStream`, `GlocSubscription`, `GlocProvider`, `GlocListener`.
 //!
-//! `GlocConsumer` is constructed directly with an `Arc<Mutex<R>>` and a
-//! `GlocStream` — no `GlocProvider` needed. Provider is an adapter-layer concern.
+//! `GlocProvider` is constructed directly with an `Arc<Mutex<R>>` and a
+//! `GlocStream` — providing shared reactor access and lifecycle management.
 
-use gloc_core::{GlocConsumer, GlocListener, GlocStream, Reactor};
+use gloc_core::{GlocListener, GlocProvider, GlocStream, Reactor};
 use std::sync::{Arc, Mutex};
 
 // ---------------------------------------------------------------------------
@@ -57,12 +57,12 @@ impl Reactor for CounterReactor {
     }
 }
 
-/// Builds a shared `GlocConsumer<CounterReactor>` with the given initial count.
+/// Builds a shared `GlocProvider<CounterReactor>` with the given initial count.
 /// Returns the consumer; cloning it gives additional consumers sharing the same reactor.
-fn make_consumer(initial: i32) -> GlocConsumer<CounterReactor> {
+fn make_consumer(initial: i32) -> GlocProvider<CounterReactor> {
     let reactor = Arc::new(Mutex::new(CounterReactor::new(initial)));
     let stream = GlocStream::new(CounterState::new(initial));
-    GlocConsumer::new(reactor, stream)
+    GlocProvider::new(reactor, stream)
 }
 
 // ---------------------------------------------------------------------------
@@ -171,7 +171,7 @@ mod stream_tests {
 }
 
 // ---------------------------------------------------------------------------
-// GlocConsumer tests
+// GlocProvider tests
 // ---------------------------------------------------------------------------
 
 mod consumer_tests {

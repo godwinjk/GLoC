@@ -4,7 +4,12 @@ members = [
     "gloc-core",
     "gloc-macro",
     "gloc",
+    "gloc-axum",
+    "gloc-bevy",
     "examples/dioxus",
+    "examples/cli",
+    "examples/axum",
+    "examples/bevy",
 ]
 
 [workspace.package]
