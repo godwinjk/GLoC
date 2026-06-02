@@ -1,6 +1,6 @@
 <div align="center">
 
-# GLOC
+# GLoC
 ![GLoC](asset/gloc_logo.svg)
 _The **G** is intentional. GLoc started as a hobby project called **G**odwin's **B**usiness **L**ogic **C**omponent,
 born from a mission to bring Flutter's legendary **BLoC** architecture into Rust.
@@ -19,9 +19,9 @@ A universal business logic architecture for Rust.
 
 ---
 
-## What is GLOC?
+## What is GLoC?
 
-GLOC is inspired by Flutter's [Bloc](https://bloclibrary.dev) architecture — but it's its own thing.
+GLoC is inspired by Flutter's [Bloc](https://bloclibrary.dev) architecture — but it's its own thing.
 It separates **business logic** from **presentation** in any Rust application and works
 anywhere Rust runs: web frontends, desktop GUIs, backend servers, CLIs, and embedded targets.
 
@@ -64,18 +64,85 @@ and event dispatch.
 
 ## Concepts
 
+### ⚛️ Reactor
+
+A **Reactor** is the central unit of business logic in GLoC — the equivalent of a BLoC in Flutter or a ViewModel in other architectures. It owns the current **State**, exposes methods to mutate it, and emits a new state to all subscribers whenever something changes.
+
+You define a reactor as a plain Rust struct annotated with `#[reactor]`. GLoC generates the reactive plumbing — subscription, change detection, and provider wiring — so you only write the logic that matters.
+
+```rust
+#[reactor(state = CounterState)]
+pub struct CounterReactor {}
+
+impl CounterReactor {
+    pub fn increment(&mut self) {
+        self.emit(CounterState { count: self.count + 1 });
+    }
+}
+```
+
+A reactor that also accepts **Neutrons** receives them through a generated `fire()` method and routes them to your `on_event` handler, keeping dispatch decoupled from the call site.
+
+---
+
+### ☢️ Neutron (Event)
+
+A **Neutron** is an immutable event fired *at* a reactor — the signal that triggers a state transition. The name follows GLoC's nuclear fission theme: a neutron strikes the reactor core and causes a reaction.
+
+Neutrons can be **enums, structs, or any type** that satisfies `Debug + Send + 'static` — no base trait to extend or import. Enums are the most common choice when a reactor handles multiple distinct events:
+
+```rust
+#[derive(Debug)]
+pub enum CounterNeutron {
+    Increment,
+    Decrement,
+    Reset,
+}
+
+impl CounterReactor {
+    fn on_event(&mut self, neutron: CounterNeutron) {
+        match neutron {
+            CounterNeutron::Increment => self.emit(CounterState { count: self.count + 1 }),
+            CounterNeutron::Decrement => self.emit(CounterState { count: self.count - 1 }),
+            CounterNeutron::Reset     => self.emit(CounterState { count: 0 }),
+        }
+    }
+}
+
+// At the call site:
+reactor.fire(CounterNeutron::Increment);
+```
+
+Neutrons are consumed on dispatch — not cloned or stored. `Event` is kept as a type alias for backward compatibility, but **Neutron is the preferred term**.
+
+---
+
+### 🔋 State
+
+**State** is a snapshot of everything a reactor knows at a given moment — pure data, no behaviour. Any type that implements `Clone + PartialEq + Debug` is automatically a `State`. Use `#[reactor_state]` to skip writing the derives:
+
+```rust
+#[reactor_state]
+pub struct CounterState {
+    pub count: i32,
+}
+```
+
+GLoC performs **change detection**: calling `emit()` with a value equal to the current state is a no-op — no notification is sent and no re-render is triggered. Only genuine transitions propagate.
+
+State is always read through the reactor — directly via `Deref` (`reactor.count`) or through a subscription stream. Subscribers always receive the latest value and are notified on every real transition.
+
+---
+
+### Other primitives
+
 | Concept | Description |
 |---------|-------------|
-| **State** | An immutable snapshot of your domain's data. Any `Clone + PartialEq + Debug` type is automatically a `State`. |
-| **Reactor** | Owns one slice of state. Exposes domain methods that call `emit()` to transition to the next state. |
-| **emit()** | State-transition primitive. Built-in change-detection — emitting the same value is a no-op. |
-| **GlocStream** | Reactive state container — notifies listeners on every real transition. |
-| **GlocConsumer** | Shared handle for reading and mutating a reactor. Multiple consumers share the same reactor. |
-| **GlocListener** | Trait for typed `old → new` transition observers. |
-| **GlocObserver** | Global observer that receives every transition across all reactors. |
-
-> **Note:** `GlocProvider` (context-tree injection) is a framework-adapter concern
-> and lives in adapter crates like `gloc-dioxus`. It is not part of `gloc-core`.
+| **`emit()`** | State-transition primitive inside a reactor. Built-in change detection — emitting the same value is a no-op. |
+| **`GlocStream`** | Reactive state container — notifies listeners on every real transition. |
+| **`GlocProvider`** | Shared `Arc<Mutex<R>>` handle for reading and mutating a reactor across threads or components. |
+| **`GlocListener`** | Trait for typed `old → new` transition observers. |
+| **`GlocObserver`** | Global observer that receives every transition across all reactors. |
 
 ---
 
@@ -254,7 +321,7 @@ r.increment();
 assert_eq!(r.state().count, 2);
 ```
 
-### Mode B — let GLOC generate the state struct
+### Mode B — let GLoC generate the state struct
 
 Annotate fields with `#[state]` — the macro generates `{ReactorName}State` automatically:
 
@@ -553,7 +620,7 @@ GLoC/
 
 ## Contributing
 
-GLOC welcomes contributions of **every kind** — from first-time open-source
+GLoC welcomes contributions of **every kind** — from first-time open-source
 contributors to seasoned Rust experts. No contribution is too small.
 
 > **The only hard rule:** every change must go through a Pull Request and
