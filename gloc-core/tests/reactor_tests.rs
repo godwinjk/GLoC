@@ -93,6 +93,7 @@ mod neutron_trait {
     #[test]
     fn enum_implements_neutron() {
         #[derive(Debug)]
+        #[allow(dead_code)]
         enum CounterEvent {
             Increment,
             Decrement,
@@ -108,6 +109,7 @@ mod neutron_trait {
     #[test]
     fn struct_implements_neutron() {
         #[derive(Debug)]
+        #[allow(dead_code)]
         struct SetValue(i32);
 
         fn assert_neutron<N: Neutron>() {}
@@ -119,6 +121,7 @@ mod neutron_trait {
     fn neutron_does_not_require_clone_or_partialeq() {
         // This type has no Clone or PartialEq — must still be a Neutron.
         #[derive(Debug)]
+        #[allow(dead_code)]
         struct NonCloneNeutron {
             payload: String,
         }
