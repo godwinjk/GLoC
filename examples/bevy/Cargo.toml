@@ -1,0 +1,10 @@
+[package]
+name = "gloc-example-bevy"
+version = "0.1.0"
+edition.workspace = true
+publish = false
+
+[dependencies]
+gloc      = { path = "../../gloc" }
+gloc-bevy = { path = "../../gloc-bevy" }
+bevy      = "0.15"

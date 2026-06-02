@@ -1,0 +1,26 @@
+<idea-plugin>
+  <id>com.gloc.plugin</id>
+  <name>GLoC Reactor Generator</name>
+  <version>0.1.0</version>
+  <vendor email="support@gloc.dev" url="https://github.com/your-org/gloc">GLoC</vendor>
+
+  <description><![CDATA[
+    Generate GLoC reactor files from the Project view context menu.<br><br>
+    Right-click any directory in the Project view and choose <b>New → GLoC Reactor</b>
+    to open a dialog where you enter a name and choose whether to include neutron (event)
+    dispatch. The plugin creates a ready-to-use <code>.rs</code> file at the selected path.
+  ]]></description>
+
+  <depends>com.intellij.modules.platform</depends>
+
+  <actions>
+    <group id="GlocNewGroup" text="New" popup="true">
+      <add-to-group group-id="NewGroup" anchor="last"/>
+      <action
+        id="GlocNewReactorAction"
+        class="com.gloc.plugin.GlocNewReactorAction"
+        text="GLoC Reactor"
+        description="Create a new GLoC Reactor file"/>
+    </group>
+  </actions>
+</idea-plugin>

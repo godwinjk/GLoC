@@ -1,0 +1,14 @@
+[package]
+name = "gloc-axum"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+description = "Axum adapter for GLoC — wire GLoC reactors into Axum shared state with zero boilerplate."
+
+[dependencies]
+gloc = { path = "../gloc" }
+axum = "0.7"
+tokio = { version = "1", features = ["full"] }
+
