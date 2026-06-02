@@ -2,7 +2,7 @@
   <id>com.gloc.plugin</id>
   <name>GLoC Reactor Generator</name>
   <version>0.1.0</version>
-  <vendor email="support@gloc.dev" url="https://github.com/your-org/gloc">GLoC</vendor>
+  <vendor email="godwinjoseph.k@gmail.com" url="https://github.com/godwinjk/gloc">GLoC</vendor>
 
   <description><![CDATA[
     Generate GLoC reactor files from the Project view context menu.<br><br>

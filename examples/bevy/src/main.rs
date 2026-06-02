@@ -384,7 +384,7 @@ fn score_system(
 
     if current_enemies < *prev_enemies {
         let defeated = *prev_enemies - current_enemies;
-        let points = defeated as u32 * 100;
+        let points = defeated * 100;
         player.update(|r| r.fire(PlayerEvent::AddScore(points)));
     }
 
