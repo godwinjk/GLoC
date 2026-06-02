@@ -195,3 +195,168 @@ impl CartReactor {
         self.emit(CartState::empty());
     }
 }
+
+// ---------------------------------------------------------------------------
+// Tests
+// ---------------------------------------------------------------------------
+
+#[cfg(test)]
+mod tests {
+    use gloc_test::{reactor_test, ReactorTester};
+
+    use super::*;
+
+    fn cart() -> CartReactor {
+        CartReactor::new(CartState::empty())
+    }
+
+    // ---- happy path ----
+
+    #[test]
+    fn add_item_transitions_status_to_active() {
+        let tester = ReactorTester::new(cart());
+        tester.act(|r| r.add_item("Book", 12.99));
+        assert_eq!(tester.state().status, CartStatus::Active);
+    }
+
+    #[test]
+    fn add_item_updates_subtotal_and_total() {
+        let tester = ReactorTester::new(cart());
+        tester.act(|r| r.add_item("Pen", 1.50));
+        tester.act(|r| r.add_item("Book", 10.00));
+        let s = tester.state();
+        assert!((s.subtotal - 11.50).abs() < 0.001);
+        assert!((s.total - 11.50).abs() < 0.001);
+    }
+
+    #[test]
+    fn remove_item_recalculates_total() {
+        let tester = ReactorTester::new(cart());
+        tester.act(|r| r.add_item("Pen", 1.50));
+        tester.act(|r| r.add_item("Book", 10.00));
+        tester.act(|r| r.remove_item(0)); // remove Pen
+        let s = tester.state();
+        assert_eq!(s.items.len(), 1);
+        assert!((s.total - 10.00).abs() < 0.001);
+    }
+
+    #[test]
+    fn apply_discount_reduces_total() {
+        let tester = ReactorTester::new(cart());
+        tester.act(|r| r.add_item("Bag", 20.00));
+        tester.act(|r| r.apply_discount(0.25));
+        let s = tester.state();
+        assert!((s.total - 15.00).abs() < 0.001);
+        assert!((s.discount - 0.25).abs() < 0.001);
+    }
+
+    #[test]
+    fn checkout_transitions_status_to_checked_out() {
+        reactor_test! {
+            build: cart(),
+            acts: [
+                |r| r.add_item("Book", 12.99),
+                |r| r.checkout(),
+            ],
+            expect_states: [
+                CartState {
+                    items: vec![CartItem { name: "Book".into(), price: 12.99 }],
+                    subtotal: 12.99,
+                    discount: 0.0,
+                    total: 12.99,
+                    status: CartStatus::Active,
+                },
+                CartState {
+                    items: vec![CartItem { name: "Book".into(), price: 12.99 }],
+                    subtotal: 12.99,
+                    discount: 0.0,
+                    total: 12.99,
+                    status: CartStatus::CheckedOut,
+                },
+            ],
+        }
+    }
+
+    #[test]
+    fn clear_resets_cart_to_empty() {
+        let tester = ReactorTester::new(cart());
+        tester.act(|r| r.add_item("Book", 12.99));
+        tester.act(|r| r.clear());
+        assert_eq!(tester.state(), CartState::empty());
+    }
+
+    // ---- edge cases ----
+
+    #[test]
+    fn checkout_on_empty_cart_emits_nothing() {
+        // Checkout guard: only Active carts can check out.
+        reactor_test! {
+            build: cart(),
+            acts: [|r| r.checkout()],
+            expect_no_emissions: true,
+        }
+    }
+
+    #[test]
+    fn add_item_after_checkout_is_ignored() {
+        let tester = ReactorTester::new(cart());
+        tester.act(|r| r.add_item("Book", 12.99));
+        tester.act(|r| r.checkout());
+        let emissions_before = tester.emitted_states().len();
+
+        tester.act(|r| r.add_item("Pen", 1.49));
+        assert_eq!(tester.emitted_states().len(), emissions_before);
+    }
+
+    #[test]
+    fn remove_item_after_checkout_is_ignored() {
+        let tester = ReactorTester::new(cart());
+        tester.act(|r| r.add_item("Book", 12.99));
+        tester.act(|r| r.checkout());
+        let item_count = tester.state().items.len();
+
+        tester.act(|r| r.remove_item(0));
+        assert_eq!(tester.state().items.len(), item_count);
+    }
+
+    #[test]
+    fn clear_on_empty_cart_emits_nothing() {
+        // CartState::empty() == CartState::empty() — change-detection swallows it.
+        reactor_test! {
+            build: cart(),
+            acts: [|r| r.clear()],
+            expect_no_emissions: true,
+        }
+    }
+
+    // ---- boundary ----
+
+    #[test]
+    fn remove_item_out_of_bounds_is_safe() {
+        let tester = ReactorTester::new(cart());
+        tester.act(|r| r.add_item("Book", 12.99));
+        let before = tester.state();
+
+        tester.act(|r| r.remove_item(99)); // no such index
+        assert_eq!(tester.state(), before);
+    }
+
+    #[test]
+    fn discount_above_one_is_clamped_to_one() {
+        let tester = ReactorTester::new(cart());
+        tester.act(|r| r.add_item("Book", 20.00));
+        tester.act(|r| r.apply_discount(1.5)); // clamped to 1.0 → total = 0
+        let s = tester.state();
+        assert!((s.total - 0.0).abs() < 0.001);
+        assert!((s.discount - 1.0).abs() < 0.001);
+    }
+
+    #[test]
+    fn remove_discount_restores_full_price() {
+        let tester = ReactorTester::new(cart());
+        tester.act(|r| r.add_item("Book", 20.00));
+        tester.act(|r| r.apply_discount(0.5));
+        tester.act(|r| r.remove_discount());
+        assert!((tester.state().total - 20.00).abs() < 0.001);
+    }
+}

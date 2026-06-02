@@ -10,6 +10,9 @@ name = "gloc-example-dioxus"
 path = "src/main.rs"
 
 [dependencies]
-# umbrella crate — gloc-core + gloc-macro
-gloc   = { path = "../../gloc" }
-dioxus = { version = "0.7", features = ["desktop"] }
+gloc         = { path = "../../gloc" }
+gloc-dioxus  = { path = "../../gloc-dioxus" }
+dioxus       = { version = "0.7", features = ["desktop"] }
+
+[dev-dependencies]
+gloc-test = { path = "../../gloc-test" }

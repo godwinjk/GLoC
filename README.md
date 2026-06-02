@@ -49,7 +49,11 @@ and event dispatch.
 
 - [Concepts](#concepts)
 - [Installation](#installation)
+- [The story](#the-story)
 - [Quick Start](#quick-start)
+  - [Reactor — direct methods](#reactor--direct-methods)
+  - [Reactor — event-driven dispatch](#reactor--event-driven-dispatch)
+  - [Shared reactor across owners](#shared-reactor-across-owners)
 - [Define State](#define-state)
 - [Define a Reactor](#define-a-reactor)
 - [Observers](#observers)
@@ -178,9 +182,50 @@ tracing = "0.1"
 
 ---
 
+## The story
+
+GLoC began as a hobby experiment — **G**odwin's **L**ogic **C**omponent — by a Flutter developer who jumped into Rust and immediately hit a wall.
+Coming from Flutter, BLoC and Cubit weren't just patterns — they were second nature. A clean boundary between logic and UI, testable in isolation, 
+portable across any host. But in Rust? Nothing came close. Every framework had its own way of doing things, and the business logic you actually cared about kept getting buried under framework glue that should never have touched it in the first place.
+So instead of waiting, GLoC was born.
+Build a Dioxus desktop app. Port the same logic to an Axum backend. Drop it into a Bevy game. 
+With GLoC, the logic stays exactly as it was — no rewrites, no adapters, no compromise.
+Not just UI frameworks. Any Rust application, anywhere Rust runs.
+
+### The abstraction
+
+The **Reactor** is the core idea. A plain Rust struct that owns one slice of domain state
+and exposes methods to transition it. Zero framework imports. Zero async runtime. Zero
+signals. Write it once; it runs unchanged everywhere:
+
+| Where | How you wire it |
+|-------|----------------|
+| Unit test | `CounterReactor::new(...)` — call it directly |
+| Dioxus desktop | `use_gloc_provide(|| CounterReactor::new(...))` |
+| Axum backend | `AxumReactor<CounterReactor>` as Axum state |
+| Bevy game | `GlocPlugin::<CounterReactor>` as an ECS resource |
+| CLI / threads | `GlocProvider::new(...)` — share across threads |
+
+The reactor never changes. The framework does.
+
+### For the Rust community
+
+The ecosystem is expanding in every direction at once — desktop, web, embedded, games,
+backend — and each corner is reinventing state management from scratch. GLoC wants to end
+that fragmentation.
+
+Not by being another framework. By being a **shared vocabulary for state**: one pattern
+that travels with you from a weekend project to a production app, from a solo experiment
+to a team codebase, from a CLI tool to a shipped product.
+
+If you learn it once, your business logic is portable forever.
+
+
+---
+
 ## Quick Start
 
-### Simple — just a reactor
+### Reactor — direct methods
 
 The common case. Create a reactor, call methods, listen to transitions.
 
@@ -211,7 +256,56 @@ fn main() {
 }
 ```
 
-### Shared — same reactor across multiple owners
+### Reactor — event-driven dispatch
+
+Opt in to **neutron firing** by adding `neutrons = YourEvent` to the macro. GLoC generates
+a `fire()` method; you write `on_event()` to handle each variant. Both styles live on the
+same reactor — neither replaces the other.
+
+```rust
+use gloc::{reactor, reactor_state, Reactor};
+
+#[reactor_state]
+pub struct CounterState { pub count: i32 }
+
+#[derive(Debug)]
+pub enum CounterEvent {
+    Increment,
+    Decrement,
+    AddBy(i32),
+    Reset,
+}
+
+#[reactor(state = CounterState, neutrons = CounterEvent)]
+pub struct CounterReactor {}
+
+impl CounterReactor {
+    fn on_event(&mut self, event: CounterEvent) {
+        match event {
+            CounterEvent::Increment   => self.emit(CounterState { count: self.state().count + 1 }),
+            CounterEvent::Decrement   => self.emit(CounterState { count: self.state().count - 1 }),
+            CounterEvent::AddBy(n)    => self.emit(CounterState { count: self.state().count + n }),
+            CounterEvent::Reset       => self.emit(CounterState { count: 0 }),
+        }
+    }
+}
+
+fn main() {
+    let mut reactor = CounterReactor::new(CounterState { count: 0 });
+
+    reactor.subscribe().listen(|old, new| println!("{} → {}", old.count, new.count));
+
+    reactor.fire(CounterEvent::Increment); // prints: 0 → 1
+    reactor.fire(CounterEvent::AddBy(4)); // prints: 1 → 5
+    reactor.fire(CounterEvent::Reset);    // prints: 5 → 0
+
+    assert_eq!(reactor.state().count, 0);
+}
+```
+
+---
+
+### Shared reactor across owners
 
 When multiple components or threads need to share one reactor, wrap it in a `GlocProvider`.
 All clones share the same reactor — a mutation from any one is visible to all.
@@ -340,7 +434,7 @@ Every `#[reactor]` struct gets:
 |---|---|
 | `impl Reactor` | `state()`, `emit()` with change-detection |
 | `new(initial)` | Constructor — suppress with `no_new` |
-| `on_change(old, new)` | Observer registration — suppress with `no_observers` |
+| `fire(neutron)` | Event dispatch — only when `neutrons = N` is set; calls `self.on_event(neutron)` |
 | `subscribe()` | Returns a `GlocSubscription` read-only handle |
 | `attach_listener(l)` | Attaches a `GlocListener` impl |
 
@@ -348,9 +442,9 @@ Every `#[reactor]` struct gets:
 
 | Argument | Effect |
 |---|---|
-| `state = SomeType` | Mode A — use an existing type |
+| `state = SomeType` | Mode A — use an existing type as state |
+| `neutrons = SomeType` | Opt-in event dispatch — generates `fire()`; you write `on_event()` |
 | `no_new` | Skip `new()` generation |
-| `no_observers` | Skip `on_change()` and stream field |
 
 ---
 

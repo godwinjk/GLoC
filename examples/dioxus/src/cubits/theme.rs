@@ -71,3 +71,77 @@ impl ThemeReactor {
         self.emit(next);
     }
 }
+
+// ---------------------------------------------------------------------------
+// Tests
+// ---------------------------------------------------------------------------
+
+#[cfg(test)]
+mod tests {
+    use gloc_test::{reactor_test, ReactorTester};
+
+    use super::*;
+
+    // ---- happy path ----
+
+    #[test]
+    fn toggle_from_light_gives_dark() {
+        reactor_test! {
+            build: ThemeReactor::new(Theme::Light),
+            acts: [|r| r.toggle()],
+            expect_states: [Theme::Dark],
+        }
+    }
+
+    #[test]
+    fn toggle_from_dark_gives_light() {
+        reactor_test! {
+            build: ThemeReactor::new(Theme::Dark),
+            acts: [|r| r.toggle()],
+            expect_states: [Theme::Light],
+        }
+    }
+
+    #[test]
+    fn double_toggle_returns_to_original() {
+        reactor_test! {
+            build: ThemeReactor::new(Theme::Light),
+            acts: [
+                |r| r.toggle(),
+                |r| r.toggle(),
+            ],
+            expect_states: [Theme::Dark, Theme::Light],
+        }
+    }
+
+    // ---- edge case: transitions capture old and new ----
+
+    #[test]
+    fn toggle_transition_records_correct_pair() {
+        reactor_test! {
+            build: ThemeReactor::new(Theme::Light),
+            acts: [|r| r.toggle()],
+            expect_transitions: [(Theme::Light, Theme::Dark)],
+        }
+    }
+
+    // ---- boundary: helper methods reflect the correct theme ----
+
+    #[test]
+    fn background_reflects_current_theme() {
+        let tester = ReactorTester::new(ThemeReactor::new(Theme::Light));
+        assert_eq!(tester.state().background(), "#f0f4f8");
+
+        tester.act(|r| r.toggle());
+        assert_eq!(tester.state().background(), "#0f172a");
+    }
+
+    #[test]
+    fn label_reflects_upcoming_toggle_direction() {
+        let tester = ReactorTester::new(ThemeReactor::new(Theme::Light));
+        assert_eq!(tester.state().label(), "Switch to Dark Mode");
+
+        tester.act(|r| r.toggle());
+        assert_eq!(tester.state().label(), "Switch to Light Mode");
+    }
+}

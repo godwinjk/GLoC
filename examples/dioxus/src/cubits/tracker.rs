@@ -38,3 +38,102 @@ impl ClickTrackerReactor {
         });
     }
 }
+
+// ---------------------------------------------------------------------------
+// Tests
+// ---------------------------------------------------------------------------
+
+#[cfg(test)]
+mod tests {
+    use gloc_test::{reactor_test, ReactorTester};
+
+    use super::*;
+
+    fn tracker() -> ClickTrackerReactor {
+        ClickTrackerReactor::new(ClickTrackerReactorState {
+            total: 0,
+            last_action: String::new(),
+        })
+    }
+
+    // ---- happy path ----
+
+    #[test]
+    fn record_increments_total() {
+        reactor_test! {
+            build: tracker(),
+            acts: [|r| r.record("increment")],
+            expect_states: [ClickTrackerReactorState {
+                total: 1,
+                last_action: "increment".into(),
+            }],
+        }
+    }
+
+    #[test]
+    fn record_updates_last_action() {
+        let tester = ReactorTester::new(tracker());
+        tester.act(|r| r.record("foo"));
+        tester.act(|r| r.record("bar"));
+        assert_eq!(tester.state().last_action, "bar");
+    }
+
+    #[test]
+    fn record_accumulates_total_across_calls() {
+        let tester = ReactorTester::new(tracker());
+        tester.act(|r| r.record("a"));
+        tester.act(|r| r.record("b"));
+        tester.act(|r| r.record("c"));
+        assert_eq!(tester.state().total, 3);
+    }
+
+    #[test]
+    fn reset_clears_total_and_last_action() {
+        reactor_test! {
+            build: tracker(),
+            acts: [
+                |r| r.record("some action"),
+                |r| r.reset(),
+            ],
+            expect_states: [
+                ClickTrackerReactorState { total: 1, last_action: "some action".into() },
+                ClickTrackerReactorState { total: 0, last_action: "reset tracker".into() },
+            ],
+        }
+    }
+
+    // ---- edge case ----
+
+    #[test]
+    fn record_sequence_each_step_is_captured() {
+        reactor_test! {
+            build: tracker(),
+            acts: [
+                |r| r.record("click-1"),
+                |r| r.record("click-2"),
+            ],
+            expect_states: [
+                ClickTrackerReactorState { total: 1, last_action: "click-1".into() },
+                ClickTrackerReactorState { total: 2, last_action: "click-2".into() },
+            ],
+        }
+    }
+
+    // ---- boundary ----
+
+    #[test]
+    fn tracker_starts_at_zero_with_no_emissions() {
+        reactor_test! {
+            build: tracker(),
+            expect_no_emissions: true,
+        }
+    }
+
+    #[test]
+    fn record_empty_string_action_is_valid() {
+        let tester = ReactorTester::new(tracker());
+        tester.act(|r| r.record(""));
+        assert_eq!(tester.state().total, 1);
+        assert_eq!(tester.state().last_action, "");
+    }
+}

@@ -78,15 +78,6 @@
 //! assert_eq!(counter.state().count, 0);
 //! ```
 //!
-//! ## Roadmap
-//!
-//! | Phase | Version | Status |
-//! |-------|---------|--------|
-//! | Reactor core | v0.1 | ✅ current |
-//! | `#[reactor]` macro | v0.2 | planned |
-//! | Event dispatch | v0.3 | planned |
-//! | Adapters (Dioxus, Axum, Bevy) | v0.4 | planned |
-//! | Stable release | v1.0 | planned |
 
 pub mod event;
 pub mod listener;

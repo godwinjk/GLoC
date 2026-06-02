@@ -81,3 +81,129 @@ impl CounterReactor {
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
+
+#[cfg(test)]
+mod tests {
+    use gloc_test::{reactor_test, ReactorTester};
+
+    use super::*;
+
+    fn counter(n: i32) -> CounterReactor {
+        CounterReactor::new(CounterState::new(n))
+    }
+
+    // ---- happy path ----
+
+    #[test]
+    fn increment_increases_count() {
+        reactor_test! {
+            build: counter(0),
+            acts: [|r| r.increment()],
+            expect_states: [CounterState::new(1)],
+        }
+    }
+
+    #[test]
+    fn decrement_decreases_count() {
+        reactor_test! {
+            build: counter(5),
+            acts: [|r| r.decrement()],
+            expect_states: [CounterState::new(4)],
+        }
+    }
+
+    #[test]
+    fn reset_returns_to_zero() {
+        reactor_test! {
+            build: counter(10),
+            acts: [|r| r.reset()],
+            expect_states: [CounterState::new(0)],
+        }
+    }
+
+    #[test]
+    fn increment_sequence_captures_each_step() {
+        reactor_test! {
+            build: counter(0),
+            acts: [
+                |r| r.increment(),
+                |r| r.increment(),
+                |r| r.increment(),
+            ],
+            expect_states: [
+                CounterState::new(1),
+                CounterState::new(2),
+                CounterState::new(3),
+            ],
+        }
+    }
+
+    #[test]
+    fn mixed_sequence_is_captured_in_order() {
+        reactor_test! {
+            build: counter(0),
+            acts: [
+                |r| r.increment(),
+                |r| r.increment(),
+                |r| r.decrement(),
+                |r| r.reset(),
+            ],
+            expect_states: [
+                CounterState::new(1),
+                CounterState::new(2),
+                CounterState::new(1),
+                CounterState::new(0),
+            ],
+        }
+    }
+
+    // ---- edge cases ----
+
+    #[test]
+    fn reset_from_zero_emits_nothing() {
+        // Change-detection: emitting an equal state is silently swallowed.
+        reactor_test! {
+            build: counter(0),
+            acts: [|r| r.reset()],
+            expect_no_emissions: true,
+        }
+    }
+
+    #[test]
+    fn count_goes_negative() {
+        reactor_test! {
+            build: counter(0),
+            acts: [|r| r.decrement()],
+            expect_states: [CounterState::new(-1)],
+        }
+    }
+
+    // ---- boundary: label transitions at count thresholds ----
+
+    #[test]
+    fn label_is_zero_at_zero() {
+        let tester = ReactorTester::new(counter(0));
+        assert_eq!(tester.state().label, "Zero");
+    }
+
+    #[test]
+    fn label_transitions_low_to_medium_at_ten() {
+        let tester = ReactorTester::new(counter(9));
+        tester.act(|r| r.increment());
+        assert_eq!(tester.state().label, "Medium");
+    }
+
+    #[test]
+    fn label_transitions_medium_to_high_at_hundred() {
+        let tester = ReactorTester::new(counter(99));
+        tester.act(|r| r.increment());
+        assert_eq!(tester.state().label, "High");
+    }
+
+    #[test]
+    fn label_is_negative_below_zero() {
+        let tester = ReactorTester::new(counter(0));
+        tester.act(|r| r.decrement());
+        assert_eq!(tester.state().label, "Negative");
+    }
+}

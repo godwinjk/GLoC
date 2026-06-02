@@ -1,0 +1,13 @@
+[package]
+name = "gloc-test"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Testing utilities for GLoC reactors — captures state sequences and provides fluent assertions"
+keywords = ["gloc", "testing", "state-management", "reactor"]
+categories = ["development-tools::testing", "rust-patterns"]
+
+[dependencies]
+gloc-core = { version = "0.2", path = "../gloc-core" }

@@ -1,0 +1,14 @@
+[package]
+name = "gloc-dioxus"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Dioxus adapter for GLoC reactors — context hooks for reactive state management"
+keywords = ["gloc", "dioxus", "state-management", "reactive", "hooks"]
+categories = ["gui", "rust-patterns"]
+
+[dependencies]
+gloc    = { path = "../gloc" }
+dioxus  = { version = "0.7" }

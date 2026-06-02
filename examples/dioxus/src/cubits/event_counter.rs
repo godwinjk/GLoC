@@ -58,3 +58,120 @@ impl EventCounterReactor {
         }
     }
 }
+
+// ---------------------------------------------------------------------------
+// Tests
+// ---------------------------------------------------------------------------
+
+#[cfg(test)]
+mod tests {
+    use gloc_test::reactor_test;
+
+    use super::*;
+
+    fn counter(n: i32) -> EventCounterReactor {
+        EventCounterReactor::new(CounterState::new(n))
+    }
+
+    // ---- happy path ----
+
+    #[test]
+    fn increment_neutron_increases_count() {
+        reactor_test! {
+            build: counter(0),
+            acts: [|r| r.fire(CounterEvent::Increment)],
+            expect_states: [CounterState::new(1)],
+        }
+    }
+
+    #[test]
+    fn decrement_neutron_decreases_count() {
+        reactor_test! {
+            build: counter(3),
+            acts: [|r| r.fire(CounterEvent::Decrement)],
+            expect_states: [CounterState::new(2)],
+        }
+    }
+
+    #[test]
+    fn reset_neutron_returns_to_zero() {
+        reactor_test! {
+            build: counter(42),
+            acts: [|r| r.fire(CounterEvent::Reset)],
+            expect_states: [CounterState::new(0)],
+        }
+    }
+
+    #[test]
+    fn add_by_neutron_adds_correct_amount() {
+        reactor_test! {
+            build: counter(10),
+            acts: [|r| r.fire(CounterEvent::AddBy(5))],
+            expect_states: [CounterState::new(15)],
+        }
+    }
+
+    #[test]
+    fn neutron_sequence_captures_each_step() {
+        reactor_test! {
+            build: counter(0),
+            acts: [
+                |r| r.fire(CounterEvent::Increment),
+                |r| r.fire(CounterEvent::AddBy(4)),
+                |r| r.fire(CounterEvent::Decrement),
+                |r| r.fire(CounterEvent::Reset),
+            ],
+            expect_states: [
+                CounterState::new(1),
+                CounterState::new(5),
+                CounterState::new(4),
+                CounterState::new(0),
+            ],
+        }
+    }
+
+    // ---- edge cases ----
+
+    #[test]
+    fn reset_from_zero_emits_nothing() {
+        reactor_test! {
+            build: counter(0),
+            acts: [|r| r.fire(CounterEvent::Reset)],
+            expect_no_emissions: true,
+        }
+    }
+
+    #[test]
+    fn add_by_zero_emits_nothing() {
+        reactor_test! {
+            build: counter(5),
+            acts: [|r| r.fire(CounterEvent::AddBy(0))],
+            expect_no_emissions: true,
+        }
+    }
+
+    // ---- boundary ----
+
+    #[test]
+    fn add_by_negative_value_decreases_count() {
+        reactor_test! {
+            build: counter(10),
+            acts: [|r| r.fire(CounterEvent::AddBy(-10))],
+            expect_states: [CounterState::new(0)],
+        }
+    }
+
+    #[test]
+    fn direct_method_and_neutron_coexist() {
+        // Verifies that direct increment() and fire(Increment) both work
+        // and each produces its own captured transition.
+        reactor_test! {
+            build: counter(0),
+            acts: [
+                |r| r.increment(),
+                |r| r.fire(CounterEvent::Increment),
+            ],
+            expect_states: [CounterState::new(1), CounterState::new(2)],
+        }
+    }
+}

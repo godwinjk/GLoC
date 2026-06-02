@@ -11,8 +11,8 @@
 //! | 4 | `ThemeReactor` | Enum state + global theme |
 //! | 5 | `CartReactor` | Complex state — multiple fields in one `State` |
 //!
-//! State transitions are observable via `subscribe()` or `attach_listener()`
-//! and would print to the terminal if wired up at startup.
+//! All reactors are provided via `use_gloc_provide` in `App` and consumed
+//! with `use_gloc::<R>()` in each child component — no prop drilling.
 
 #![allow(non_snake_case)]
 
@@ -23,41 +23,35 @@ use cubits::{
     CounterEvent, CounterReactor, CounterState, EventCounterReactor, Theme, ThemeReactor,
 };
 use dioxus::prelude::*;
-use gloc::Reactor;
+use gloc_dioxus::{use_gloc, use_gloc_provide};
 
 fn main() {
     dioxus::launch(App);
 }
 
 // ---------------------------------------------------------------------------
-// Root component
+// Root component — provides all reactors into the Dioxus context tree
 // ---------------------------------------------------------------------------
 
 #[component]
 fn App() -> Element {
-    // 1. CounterReactor — Mode A, direct methods
-    let counter = use_signal(|| CounterReactor::new(CounterState::new(0)));
-
-    // 2. EventCounterReactor — neutron firing
-    let event_counter = use_signal(|| EventCounterReactor::new(CounterState::new(0)));
-
-    // 3. ClickTrackerReactor — Mode B, generated state
-    let tracker = use_signal(|| {
+    // Each call injects one reactor type into the component tree.
+    // Descendants call use_gloc::<R>() to consume — no prop drilling.
+    use_gloc_provide(|| CounterReactor::new(CounterState::new(0)));
+    use_gloc_provide(|| EventCounterReactor::new(CounterState::new(0)));
+    use_gloc_provide(|| {
         ClickTrackerReactor::new(ClickTrackerReactorState {
             total: 0,
             last_action: String::new(),
         })
     });
+    use_gloc_provide(|| ThemeReactor::new(Theme::Light));
+    use_gloc_provide(|| CartReactor::new(CartState::empty()));
 
-    // 4. ThemeReactor — enum state
-    let theme = use_signal(|| ThemeReactor::new(Theme::Light));
-
-    // 5. CartReactor — complex state
-    let cart = use_signal(|| CartReactor::new(CartState::empty()));
-
-    let bg = theme.read().state().background().to_string();
-    let text_color = theme.read().state().text_color().to_string();
-    let card_bg = theme.read().state().card_background().to_string();
+    let theme = use_gloc::<ThemeReactor>();
+    let bg = theme.state().background().to_string();
+    let text_color = theme.state().text_color().to_string();
+    let card_bg = theme.state().card_background().to_string();
 
     rsx! {
         div {
@@ -72,7 +66,7 @@ fn App() -> Element {
             ",
 
             // ── App header ────────────────────────────────────────────────
-            AppHeader { theme, tracker }
+            AppHeader {}
 
             // ── Feature grid — 2 columns ──────────────────────────────────
             div {
@@ -84,40 +78,36 @@ fn App() -> Element {
                     margin: 0 auto;
                 ",
 
-                // Section 1 — Mode A: direct method calls
                 FeatureSection {
                     badge: "Feature 1",
                     title: "#[reactor]  Mode A",
                     subtitle: "counter.increment()  — direct method",
                     card_bg: card_bg.clone(),
-                    ModeAView { counter, tracker }
+                    ModeAView {}
                 }
 
-                // Section 2 — Neutron firing
                 FeatureSection {
                     badge: "Feature 2",
                     title: "Neutron Firing",
                     subtitle: "reactor.fire(neutron)  — neutrons = N",
                     card_bg: card_bg.clone(),
-                    DispatchView { event_counter, tracker }
+                    DispatchView {}
                 }
 
-                // Section 3 — Mode B: generated state struct
                 FeatureSection {
                     badge: "Feature 3",
                     title: "#[reactor]  Mode B",
                     subtitle: "#[state] fields  — generated state struct",
                     card_bg: card_bg.clone(),
-                    ModeBView { tracker }
+                    ModeBView {}
                 }
 
-                // Section 4 — Enum state
                 FeatureSection {
                     badge: "Feature 4",
                     title: "Enum State",
                     subtitle: "enum Theme {{ Light, Dark }}  — any type is a State",
                     card_bg: card_bg.clone(),
-                    EnumStateView { theme, tracker }
+                    EnumStateView {}
                 }
             }
 
@@ -129,7 +119,7 @@ fn App() -> Element {
                     title: "Complex State",
                     subtitle: "CartState {{ items, subtotal, discount, total, status }}",
                     card_bg: card_bg.clone(),
-                    CartView { cart }
+                    CartView {}
                 }
             }
         }
@@ -137,15 +127,18 @@ fn App() -> Element {
 }
 
 // ---------------------------------------------------------------------------
-// App header
+// App header — consumes ThemeReactor and ClickTrackerReactor directly
 // ---------------------------------------------------------------------------
 
 #[component]
-fn AppHeader(theme: Signal<ThemeReactor>, tracker: Signal<ClickTrackerReactor>) -> Element {
-    let is_dark = *theme.read().state() == Theme::Dark;
+fn AppHeader() -> Element {
+    let theme = use_gloc::<ThemeReactor>();
+    let tracker = use_gloc::<ClickTrackerReactor>();
+
+    let is_dark = theme.state() == Theme::Dark;
     let btn_bg = if is_dark { "#f0f4f8" } else { "#1a202c" };
     let btn_color = if is_dark { "#1a202c" } else { "#f0f4f8" };
-    let btn_label = theme.read().state().label().to_string();
+    let btn_label = theme.state().label().to_string();
 
     rsx! {
         div {
@@ -166,7 +159,7 @@ fn AppHeader(theme: Signal<ThemeReactor>, tracker: Signal<ClickTrackerReactor>) 
                 }
                 p {
                     style: "margin: 0; font-size: 13px; opacity: 0.45;",
-                    "State management for any Rust application  \u{00B7}  observers print transitions to terminal"
+                    "State management for any Rust application  \u{00B7}  use_gloc — no prop drilling"
                 }
             }
 
@@ -178,8 +171,8 @@ fn AppHeader(theme: Signal<ThemeReactor>, tracker: Signal<ClickTrackerReactor>) 
                     transition: background 0.3s, color 0.3s; white-space: nowrap;
                 ",
                 onclick: move |_| {
-                    theme.write().toggle();
-                    tracker.write().record("theme toggle");
+                    theme.update(|r| r.toggle());
+                    tracker.update(|r| r.record("theme toggle"));
                 },
                 "🎨  {btn_label}"
             }
@@ -212,7 +205,6 @@ fn FeatureSection(
                 transition: background 0.3s;
             ",
 
-            // Section header
             div {
                 span {
                     style: "
@@ -241,9 +233,12 @@ fn FeatureSection(
 // ---------------------------------------------------------------------------
 
 #[component]
-fn ModeAView(counter: Signal<CounterReactor>, tracker: Signal<ClickTrackerReactor>) -> Element {
-    let count = counter.read().state().count;
-    let label = counter.read().state().label.clone();
+fn ModeAView() -> Element {
+    let counter = use_gloc::<CounterReactor>();
+    let tracker = use_gloc::<ClickTrackerReactor>();
+
+    let count = counter.state().count;
+    let label = counter.state().label.clone();
 
     rsx! {
         div { style: "display: flex; flex-direction: column; align-items: center; gap: 14px;",
@@ -251,22 +246,31 @@ fn ModeAView(counter: Signal<CounterReactor>, tracker: Signal<ClickTrackerReacto
             p { style: "font-size: 64px; font-weight: 800; margin: 0; line-height: 1;", "{count}" }
             span { style: "font-size: 12px; opacity: 0.45; font-weight: 600;", "{label}" }
 
-            CodeChip { text: "counter.increment()" }
+            CodeChip { text: "counter.update(|r| r.increment())" }
 
             div { style: "display: flex; gap: 10px;",
                 ActionBtn {
                     color: "#ef4444",
-                    onclick: move |_| { counter.write().decrement(); tracker.write().record("mode-a decrement"); },
+                    onclick: move |_| {
+                        counter.update(|r| r.decrement());
+                        tracker.update(|r| r.record("mode-a decrement"));
+                    },
                     "−"
                 }
                 ActionBtn {
                     color: "#6b7280",
-                    onclick: move |_| { counter.write().reset(); tracker.write().record("mode-a reset"); },
+                    onclick: move |_| {
+                        counter.update(|r| r.reset());
+                        tracker.update(|r| r.record("mode-a reset"));
+                    },
                     "Reset"
                 }
                 ActionBtn {
                     color: "#22c55e",
-                    onclick: move |_| { counter.write().increment(); tracker.write().record("mode-a increment"); },
+                    onclick: move |_| {
+                        counter.update(|r| r.increment());
+                        tracker.update(|r| r.record("mode-a increment"));
+                    },
                     "+"
                 }
             }
@@ -279,12 +283,12 @@ fn ModeAView(counter: Signal<CounterReactor>, tracker: Signal<ClickTrackerReacto
 // ---------------------------------------------------------------------------
 
 #[component]
-fn DispatchView(
-    event_counter: Signal<EventCounterReactor>,
-    tracker: Signal<ClickTrackerReactor>,
-) -> Element {
-    let count = event_counter.read().state().count;
-    let label = event_counter.read().state().label.clone();
+fn DispatchView() -> Element {
+    let event_counter = use_gloc::<EventCounterReactor>();
+    let tracker = use_gloc::<ClickTrackerReactor>();
+
+    let count = event_counter.state().count;
+    let label = event_counter.state().label.clone();
 
     rsx! {
         div { style: "display: flex; flex-direction: column; align-items: center; gap: 14px;",
@@ -292,38 +296,38 @@ fn DispatchView(
             p { style: "font-size: 64px; font-weight: 800; margin: 0; line-height: 1;", "{count}" }
             span { style: "font-size: 12px; opacity: 0.45; font-weight: 600;", "{label}" }
 
-            CodeChip { text: "reactor.fire(CounterEvent::Increment)" }
+            CodeChip { text: "counter.update(|r| r.fire(CounterEvent::Increment))" }
 
             div { style: "display: flex; gap: 10px; flex-wrap: wrap; justify-content: center;",
                 ActionBtn {
                     color: "#ef4444",
                     onclick: move |_| {
-                        event_counter.write().fire(CounterEvent::Decrement);
-                        tracker.write().record("fire Decrement");
+                        event_counter.update(|r| r.fire(CounterEvent::Decrement));
+                        tracker.update(|r| r.record("fire Decrement"));
                     },
                     "−"
                 }
                 ActionBtn {
                     color: "#6b7280",
                     onclick: move |_| {
-                        event_counter.write().fire(CounterEvent::Reset);
-                        tracker.write().record("fire Reset");
+                        event_counter.update(|r| r.fire(CounterEvent::Reset));
+                        tracker.update(|r| r.record("fire Reset"));
                     },
                     "Reset"
                 }
                 ActionBtn {
                     color: "#22c55e",
                     onclick: move |_| {
-                        event_counter.write().fire(CounterEvent::Increment);
-                        tracker.write().record("fire Increment");
+                        event_counter.update(|r| r.fire(CounterEvent::Increment));
+                        tracker.update(|r| r.record("fire Increment"));
                     },
                     "+"
                 }
                 ActionBtn {
                     color: "#8b5cf6",
                     onclick: move |_| {
-                        event_counter.write().fire(CounterEvent::AddBy(5));
-                        tracker.write().record("fire AddBy(5)");
+                        event_counter.update(|r| r.fire(CounterEvent::AddBy(5)));
+                        tracker.update(|r| r.record("fire AddBy(5)"));
                     },
                     "+5"
                 }
@@ -337,9 +341,11 @@ fn DispatchView(
 // ---------------------------------------------------------------------------
 
 #[component]
-fn ModeBView(tracker: Signal<ClickTrackerReactor>) -> Element {
-    let total = tracker.read().state().total;
-    let last_action = tracker.read().state().last_action.clone();
+fn ModeBView() -> Element {
+    let tracker = use_gloc::<ClickTrackerReactor>();
+
+    let total = tracker.state().total;
+    let last_action = tracker.state().last_action.clone();
 
     rsx! {
         div { style: "display: flex; flex-direction: column; gap: 12px;",
@@ -373,9 +379,12 @@ fn ModeBView(tracker: Signal<ClickTrackerReactor>) -> Element {
 // ---------------------------------------------------------------------------
 
 #[component]
-fn EnumStateView(theme: Signal<ThemeReactor>, tracker: Signal<ClickTrackerReactor>) -> Element {
-    let is_dark = *theme.read().state() == Theme::Dark;
-    let btn_label = theme.read().state().label().to_string();
+fn EnumStateView() -> Element {
+    let theme = use_gloc::<ThemeReactor>();
+    let tracker = use_gloc::<ClickTrackerReactor>();
+
+    let is_dark = theme.state() == Theme::Dark;
+    let btn_label = theme.state().label().to_string();
     let icon = if is_dark { "🌙" } else { "☀️" };
     let mode_text = if is_dark { "Dark Mode" } else { "Light Mode" };
 
@@ -395,8 +404,8 @@ fn EnumStateView(theme: Signal<ThemeReactor>, tracker: Signal<ClickTrackerReacto
                     width: 100%;
                 ",
                 onclick: move |_| {
-                    theme.write().toggle();
-                    tracker.write().record("theme toggle");
+                    theme.update(|r| r.toggle());
+                    tracker.update(|r| r.record("theme toggle"));
                 },
                 "{btn_label}"
             }
@@ -409,18 +418,19 @@ fn EnumStateView(theme: Signal<ThemeReactor>, tracker: Signal<ClickTrackerReacto
 // ---------------------------------------------------------------------------
 
 #[component]
-fn CartView(cart: Signal<CartReactor>) -> Element {
-    let items = cart.read().state().items.clone();
-    let subtotal = cart.read().state().subtotal;
-    let discount = cart.read().state().discount;
-    let total = cart.read().state().total;
-    let status = cart.read().state().status.clone();
+fn CartView() -> Element {
+    let cart = use_gloc::<CartReactor>();
+
+    let items = cart.state().items.clone();
+    let subtotal = cart.state().subtotal;
+    let discount = cart.state().discount;
+    let total = cart.state().total;
+    let status = cart.state().status.clone();
     let locked = matches!(status, CartStatus::CheckedOut);
 
     rsx! {
         div { style: "display: flex; flex-direction: column; gap: 14px;",
 
-            // Feature hint + status badge
             div { style: "display: flex; align-items: center; gap: 10px; flex-wrap: wrap;",
                 CodeChip { text: "CartState: items, subtotal, discount, total, status" }
                 span {
@@ -431,7 +441,6 @@ fn CartView(cart: Signal<CartReactor>) -> Element {
                 }
             }
 
-            // Add item buttons
             if !locked {
                 div { style: "display: flex; gap: 8px; flex-wrap: wrap;",
                     for (name, price) in [("Book", 12.99_f64), ("Pen", 1.49), ("Bag", 24.99)] {
@@ -441,14 +450,13 @@ fn CartView(cart: Signal<CartReactor>) -> Element {
                                 background: #3b82f6; color: white;
                                 font-size: 13px; font-weight: 600; cursor: pointer;
                             ",
-                            onclick: move |_| cart.write().add_item(name, price),
+                            onclick: move |_| cart.update(|r| r.add_item(name, price)),
                             "+ {name}  ${price:.2}"
                         }
                     }
                 }
             }
 
-            // Item list
             if items.is_empty() {
                 p {
                     style: "margin: 0; opacity: 0.35; font-size: 14px; text-align: center; padding: 8px 0;",
@@ -466,7 +474,7 @@ fn CartView(cart: Signal<CartReactor>) -> Element {
                                     button {
                                         style: "border: none; background: #ef444422; color: #ef4444;
                                                 border-radius: 6px; padding: 2px 8px; cursor: pointer; font-size: 12px;",
-                                        onclick: move |_| cart.write().remove_item(i),
+                                        onclick: move |_| cart.update(|r| r.remove_item(i)),
                                         "✕"
                                     }
                                 }
@@ -476,7 +484,6 @@ fn CartView(cart: Signal<CartReactor>) -> Element {
                 }
             }
 
-            // Discount selector
             if !locked && !items.is_empty() {
                 div { style: "display: flex; gap: 8px; align-items: center; flex-wrap: wrap;",
                     span { style: "font-size: 12px; opacity: 0.45;", "Discount:" }
@@ -490,7 +497,7 @@ fn CartView(cart: Signal<CartReactor>) -> Element {
                                     style: "padding: 4px 10px; border-radius: 6px; font-size: 12px;
                                             font-weight: 600; cursor: pointer; color: inherit;
                                             border: 2px solid {border_col}; background: {bg_col};",
-                                    onclick: move |_| cart.write().apply_discount(pct),
+                                    onclick: move |_| cart.update(|r| r.apply_discount(pct)),
                                     "{lbl}"
                                 }
                             }
@@ -499,7 +506,6 @@ fn CartView(cart: Signal<CartReactor>) -> Element {
                 }
             }
 
-            // Totals
             if !items.is_empty() {
                 div {
                     style: "border-top: 1px solid rgba(128,128,128,0.18); padding-top: 10px;
@@ -522,7 +528,6 @@ fn CartView(cart: Signal<CartReactor>) -> Element {
                 }
             }
 
-            // Actions
             if !items.is_empty() {
                 div { style: "display: flex; gap: 8px;",
                     if !locked {
@@ -530,7 +535,7 @@ fn CartView(cart: Signal<CartReactor>) -> Element {
                             style: "flex: 1; padding: 10px; border-radius: 8px; border: none;
                                     background: #16a34a; color: white; font-weight: 700;
                                     font-size: 14px; cursor: pointer;",
-                            onclick: move |_| cart.write().checkout(),
+                            onclick: move |_| cart.update(|r| r.checkout()),
                             "✓  Checkout"
                         }
                     }
@@ -538,7 +543,7 @@ fn CartView(cart: Signal<CartReactor>) -> Element {
                         style: "padding: 10px 16px; border-radius: 8px; border: none;
                                 background: rgba(128,128,128,0.12); color: inherit;
                                 font-size: 14px; cursor: pointer;",
-                        onclick: move |_| cart.write().clear(),
+                        onclick: move |_| cart.update(|r| r.clear()),
                         "Clear"
                     }
                 }

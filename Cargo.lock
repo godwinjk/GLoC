@@ -3688,6 +3688,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "gloc-dioxus"
+version = "0.2.0"
+dependencies = [
+ "dioxus",
+ "gloc",
+]
+
+[[package]]
 name = "gloc-example-axum"
 version = "0.1.0"
 dependencies = [
@@ -3721,6 +3729,8 @@ version = "0.1.0"
 dependencies = [
  "dioxus",
  "gloc",
+ "gloc-dioxus",
+ "gloc-test",
 ]
 
 [[package]]
@@ -3734,6 +3744,13 @@ dependencies = [
  "syn 2.0.117",
  "tracing",
  "trybuild",
+]
+
+[[package]]
+name = "gloc-test"
+version = "0.2.0"
+dependencies = [
+ "gloc-core",
 ]
 
 [[package]]
