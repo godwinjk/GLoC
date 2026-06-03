@@ -34,7 +34,7 @@ use std::sync::{Arc, Mutex};
 
 use bevy::app::{App, Plugin};
 use bevy::ecs::system::Resource;
-use gloc::{GlocProvider, GlocStream, Reactor};
+use gloc::{GlocProvider, Reactor};
 
 // ---------------------------------------------------------------------------
 // GlocResource
@@ -144,10 +144,8 @@ where
             .take()
             .expect("GlocPlugin::build called more than once — each plugin instance must be used with exactly one App");
 
-        let initial_state = reactor.state().clone();
         let shared = Arc::new(Mutex::new(reactor));
-        let stream = GlocStream::new(initial_state);
-        let consumer = GlocProvider::new(shared, stream);
+        let consumer = GlocProvider::new(shared);
 
         app.insert_resource(GlocResource(consumer));
     }

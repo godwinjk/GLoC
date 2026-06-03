@@ -1,9 +1,9 @@
 //! [`GlocProvider`] — shared ownership and lifecycle management for reactors.
 //!
-//! A `GlocProvider` holds a shared reference to a reactor and its stream,
-//! providing read/write access and an explicit lifecycle via [`GlocProvider::release`].
-//! Multiple providers can coexist for the same reactor; mutations from any
-//! one are immediately visible to all others.
+//! A `GlocProvider` wraps a reactor in `Arc<Mutex<R>>` for shared mutable
+//! access across threads or async contexts. The reactor's built-in stream
+//! (from `Reactor::stream()`) is used directly — no separate stream is stored
+//! in the provider.
 //!
 //! # Example
 //!
@@ -16,9 +16,12 @@
 //! #[derive(Clone, PartialEq, Debug)]
 //! struct CounterState { pub count: i32 }
 //!
-//! struct CounterReactor { state: CounterState }
+//! struct CounterReactor { state: CounterState, stream: GlocStream<CounterState> }
 //! impl CounterReactor {
-//!     fn new() -> Self { Self { state: CounterState { count: 0 } } }
+//!     fn new() -> Self {
+//!         let state = CounterState { count: 0 };
+//!         Self { stream: GlocStream::new(state.clone()), state }
+//!     }
 //!     fn increment(&mut self) {
 //!         let next = self.state().count + 1;
 //!         self.emit(CounterState { count: next });
@@ -28,31 +31,35 @@
 //!     type State = CounterState;
 //!     fn state(&self) -> &CounterState { &self.state }
 //!     fn emit(&mut self, next: CounterState) {
-//!         if next != self.state { self.state = next; }
+//!         if next != self.state {
+//!             let old = self.state.clone();
+//!             self.state = next;
+//!             self.stream.emit_transition(&old, &self.state);
+//!         }
 //!     }
+//!     fn stream(&self) -> GlocStream<CounterState> { self.stream.clone() }
 //! }
+//!
+//! let provider = GlocProvider::new(Arc::new(Mutex::new(CounterReactor::new())));
+//! provider.update(|r| r.increment());
+//! assert_eq!(provider.state().count, 1);
 //! ```
 
 use std::sync::{Arc, Mutex};
 
 use crate::listener::GlocListener;
 use crate::reactor::Reactor;
-use crate::stream::GlocStream;
+use crate::stream::ListenerHandle;
 
 /// Provides shared read/write access to a reactor with explicit lifecycle management.
 ///
-/// `GlocProvider<R>` gives read and write access to a reactor without owning
-/// it. Multiple providers can exist for the same reactor simultaneously — they
-/// all share the same `Arc<Mutex<R>>` and [`GlocStream`].
-///
-/// Use [`release`](Self::release) instead of dropping when you want explicit
-/// lifecycle notifications: `on_close()` on the reactor and the global
-/// [`GlocObserver`](crate::observer::GlocObserver) are both notified.
+/// `GlocProvider<R>` wraps a reactor in `Arc<Mutex<R>>` for multi-owner, multi-thread
+/// access. The reactor's own built-in stream (from [`Reactor::stream`]) carries all
+/// transitions — the provider itself stores no stream.
 ///
 /// # Cloning
 ///
-/// Cloning is free — it only increments `Arc` reference counts.
-/// Does not require `R: Clone`.
+/// Cloning is free — only increments the `Arc` reference count.
 ///
 /// # Thread safety
 ///
@@ -61,14 +68,9 @@ pub struct GlocProvider<R: Reactor>
 where
     R::State: Send,
 {
-    /// Shared reactor behind a mutex.
     reactor: Arc<Mutex<R>>,
-
-    /// Shared stream — carries every state transition to listeners.
-    stream: GlocStream<R::State>,
 }
 
-/// Manual `Clone` — does not require `R: Clone`.
 impl<R: Reactor> Clone for GlocProvider<R>
 where
     R::State: Send,
@@ -76,7 +78,6 @@ where
     fn clone(&self) -> Self {
         Self {
             reactor: Arc::clone(&self.reactor),
-            stream: self.stream.clone(),
         }
     }
 }
@@ -85,55 +86,20 @@ impl<R: Reactor> GlocProvider<R>
 where
     R::State: Send,
 {
-    /// Constructs a `GlocProvider` from a shared reactor and stream.
-    ///
-    /// Framework adapters (e.g. `gloc-dioxus`) call this when wiring a reactor
-    /// into a component tree. Application code can also call it directly when
-    /// sharing a reactor across threads without a UI context.
-    pub fn new(reactor: Arc<Mutex<R>>, stream: GlocStream<R::State>) -> Self {
-        Self { reactor, stream }
+    /// Wraps a reactor in a `GlocProvider` for shared access.
+    pub fn new(reactor: Arc<Mutex<R>>) -> Self {
+        Self { reactor }
     }
 
     /// Returns a clone of the current state.
-    ///
-    /// Acquires the reactor mutex, clones the state, and releases the lock.
-    ///
-    /// # Example
-    ///
-    /// ```rust
-    /// # use gloc_core::{Reactor, State};
-    /// # use gloc_core::provider::GlocProvider;
-    /// # use gloc_core::stream::GlocStream;
-    /// # use std::sync::{Arc, Mutex};
-    /// # #[derive(Clone, PartialEq, Debug)] struct S(i32);
-    /// # struct R { s: S } impl R { fn new() -> Self { Self { s: S(5) } } }
-    /// # impl Reactor for R { type State = S; fn state(&self) -> &S { &self.s } fn emit(&mut self, s: S) { self.s = s; } }
-    /// let reactor = Arc::new(Mutex::new(R::new()));
-    /// let stream = GlocStream::new(S(5));
-    /// let provider = GlocProvider::new(reactor, stream);
-    /// assert_eq!(provider.state().0, 5);
-    /// ```
     pub fn state(&self) -> R::State {
         self.reactor.lock().unwrap().state().clone()
     }
 
-    /// Calls a closure that mutates the reactor and pushes any state transition
-    /// into the shared [`GlocStream`].
+    /// Calls `f` with `&mut R`.
     ///
-    /// The closure receives `&mut R` — the reactor itself — and can call any
-    /// method on it. If the reactor's `emit()` produces a new state, the
-    /// transition is propagated to the stream and all listeners are notified.
-    ///
-    /// # How it works
-    ///
-    /// 1. Records the state before the closure runs
-    /// 2. Acquires the reactor mutex and runs the closure
-    /// 3. Records the state after the closure
-    /// 4. If old ≠ new, calls `stream.emit_transition(old, new)`
-    ///
-    /// # Parameters
-    ///
-    /// - `f` — a closure that accepts `&mut R` and calls one or more domain methods
+    /// `emit()` inside `f` fires the reactor's built-in stream automatically —
+    /// no manual stream management needed.
     ///
     /// # Example
     ///
@@ -143,46 +109,23 @@ where
     /// # use gloc_core::stream::GlocStream;
     /// # use std::sync::{Arc, Mutex};
     /// # #[derive(Clone, PartialEq, Debug)] struct S(i32);
-    /// # struct R { s: S }
-    /// # impl R { fn new() -> Self { Self { s: S(0) } } fn inc(&mut self) { self.emit(S(self.s.0 + 1)); } }
-    /// # impl Reactor for R { type State = S; fn state(&self) -> &S { &self.s } fn emit(&mut self, s: S) { if s != self.s { self.s = s; } } }
-    /// let reactor = Arc::new(Mutex::new(R::new()));
-    /// let stream = GlocStream::new(S(0));
-    /// let provider = GlocProvider::new(reactor, stream);
+    /// # struct R { s: S, stream: GlocStream<S> }
+    /// # impl R { fn new() -> Self { Self { s: S(0), stream: GlocStream::new(S(0)) } } fn inc(&mut self) { self.emit(S(self.s.0 + 1)); } }
+    /// # impl Reactor for R { type State = S; fn state(&self) -> &S { &self.s } fn emit(&mut self, s: S) { if s != self.s { let o = self.s.clone(); self.s = s.clone(); self.stream.emit_transition(&o, &s); } } fn stream(&self) -> GlocStream<S> { self.stream.clone() } }
+    /// let provider = GlocProvider::new(Arc::new(Mutex::new(R::new())));
     /// provider.update(|r| r.inc());
     /// assert_eq!(provider.state().0, 1);
     /// ```
     pub fn update(&self, f: impl FnOnce(&mut R)) {
-        let old = {
-            let guard = self.reactor.lock().unwrap();
-            guard.state().clone()
-        };
-        {
-            let mut guard = self.reactor.lock().unwrap();
-            f(&mut guard);
-        }
-        let new = {
-            let guard = self.reactor.lock().unwrap();
-            guard.state().clone()
-        };
-        if old != new {
-            self.stream.emit_transition(&old, &new);
-            // Notify global observer — formatted as Debug strings so the
-            // type-erased observer trait needs no generic parameters.
-            if let Some(obs) = crate::observer::observer() {
-                obs.on_transition(
-                    std::any::type_name::<R>(),
-                    &format!("{old:?}"),
-                    &format!("{new:?}"),
-                );
-            }
-        }
+        let mut guard = self.reactor.lock().unwrap();
+        f(&mut guard);
+        // emit() inside f already fired the stream and notified the observer.
     }
 
-    /// Registers a closure listener on the underlying stream.
+    /// Registers a listener on the reactor's built-in stream.
     ///
-    /// The closure receives `(&old_state, &new_state)` on every real
-    /// state transition — same semantics as [`GlocStream::listen`].
+    /// The listener receives `(&old, &new)` on every real state transition,
+    /// in registration order, synchronously.
     ///
     /// # Example
     ///
@@ -192,65 +135,72 @@ where
     /// # use gloc_core::stream::GlocStream;
     /// # use std::sync::{Arc, Mutex};
     /// # #[derive(Clone, PartialEq, Debug)] struct S(i32);
-    /// # struct R { s: S }
-    /// # impl R { fn new() -> Self { Self { s: S(0) } } fn inc(&mut self) { self.emit(S(self.s.0 + 1)); } }
-    /// # impl Reactor for R { type State = S; fn state(&self) -> &S { &self.s } fn emit(&mut self, s: S) { if s != self.s { self.s = s; } } }
-    /// let reactor = Arc::new(Mutex::new(R::new()));
-    /// let stream = GlocStream::new(S(0));
-    /// let provider = GlocProvider::new(reactor, stream);
-    ///
-    /// let log: std::sync::Arc<std::sync::Mutex<Vec<i32>>> = std::sync::Arc::new(std::sync::Mutex::new(vec![]));
-    /// let log_clone = log.clone();
-    /// provider.listen(move |_old, new| log_clone.lock().unwrap().push(new.0));
-    ///
+    /// # struct R { s: S, stream: GlocStream<S> }
+    /// # impl R { fn new() -> Self { Self { s: S(0), stream: GlocStream::new(S(0)) } } fn inc(&mut self) { self.emit(S(self.s.0 + 1)); } }
+    /// # impl Reactor for R { type State = S; fn state(&self) -> &S { &self.s } fn emit(&mut self, s: S) { if s != self.s { let o = self.s.clone(); self.s = s.clone(); self.stream.emit_transition(&o, &s); } } fn stream(&self) -> GlocStream<S> { self.stream.clone() } }
+    /// let provider = GlocProvider::new(Arc::new(Mutex::new(R::new())));
+    /// let log = std::sync::Arc::new(std::sync::Mutex::new(vec![]));
+    /// let log2 = log.clone();
+    /// let _h = provider.listen(move |_old, new| log2.lock().unwrap().push(new.0));
     /// provider.update(|r| r.inc());
     /// provider.update(|r| r.inc());
-    ///
     /// assert_eq!(*log.lock().unwrap(), vec![1, 2]);
     /// ```
-    pub fn listen(&self, f: impl Fn(&R::State, &R::State) + Send + 'static) {
-        self.stream.listen(f);
-    }
-
-    /// Attaches a [`GlocListener`] implementation to this provider.
-    ///
-    /// This is the trait-object version of [`listen`](Self::listen) — useful
-    /// when you have a service struct that implements `GlocListener<R>` and
-    /// want to attach it without converting it to a closure.
-    ///
-    /// # Parameters
-    ///
-    /// - `listener` — any value that implements `GlocListener<R> + Send + 'static`
-    pub fn attach_listener<L>(&self, listener: L)
+    /// Registers a listener on the reactor's stream. Returns a [`ListenerHandle`]
+    /// — drop it to cancel, or call [`ListenerHandle::forget`] to make permanent.
+    pub fn listen(&self, f: impl Fn(&R::State, &R::State) + Send + Sync + 'static) -> ListenerHandle
     where
-        L: GlocListener<R> + Send + 'static,
+        R::State: 'static,
     {
-        self.stream.listen(move |old, new| {
-            listener.on_transition(old, new);
-        });
+        self.reactor.lock().unwrap().stream().listen(f)
     }
 
-    /// Returns a clone of the underlying [`GlocStream`].
-    ///
-    /// Use this to pass the raw stream to framework adapters.
-    pub fn stream(&self) -> GlocStream<R::State> {
-        self.stream.clone()
+    /// Attaches a [`GlocListener`] to the reactor's stream.
+    /// Returns a [`ListenerHandle`] for cancellation.
+    pub fn attach_listener<L>(&self, listener: L) -> ListenerHandle
+    where
+        L: GlocListener<R> + Send + Sync + 'static,
+        R::State: 'static,
+    {
+        self.reactor
+            .lock()
+            .unwrap()
+            .stream()
+            .listen(move |old, new| {
+                listener.on_transition(old, new);
+            })
     }
 
-    /// Releases this provider — calls `on_close()` on the reactor and notifies
-    /// the global [`GlocObserver`](crate::observer::GlocObserver). Use this
-    /// instead of simply dropping the provider when you want explicit lifecycle
-    /// management.
-    ///
-    /// If other clones of this provider still exist, the reactor is not actually
-    /// dropped yet — but `on_close` and the observer are still notified.
-    pub fn release(self) {
+    /// Returns a clone of the reactor's built-in stream.
+    pub fn stream(&self) -> crate::stream::GlocStream<R::State> {
+        self.reactor.lock().unwrap().stream()
+    }
+
+    /// Fires the close lifecycle:
+    /// 1. Calls `reactor.on_close()` — user cleanup hook.
+    /// 2. Notifies the global `GlocObserver::on_close`.
+    /// 3. Closes the reactor's built-in stream — fires close listeners,
+    ///    then clears all transition listeners.
+    pub fn close(&self)
+    where
+        R::State: 'static,
+    {
         if let Ok(mut guard) = self.reactor.lock() {
             guard.on_close();
             if let Some(obs) = crate::observer::observer() {
                 obs.on_close(std::any::type_name::<R>());
             }
+            let stream = guard.stream();
+            drop(guard); // release reactor lock before closing stream
+            stream.close();
         }
-        // self drops here, decrementing Arc count
+    }
+
+    /// Releases this provider — calls `close()` then drops.
+    pub fn release(self)
+    where
+        R::State: 'static,
+    {
+        self.close();
     }
 }

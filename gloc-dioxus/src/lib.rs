@@ -430,6 +430,10 @@
 mod context;
 mod handle;
 mod hook;
+mod macros;
 
 pub use handle::GlocHandle;
-pub use hook::{use_gloc, use_gloc_provide};
+pub use hook::{
+    use_gloc, use_gloc_builder, use_gloc_builder_when, use_gloc_consumer, use_gloc_consumer_when,
+    use_gloc_listener, use_gloc_listener_when, use_gloc_provide,
+};

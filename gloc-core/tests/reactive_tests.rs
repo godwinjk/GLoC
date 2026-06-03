@@ -24,12 +24,15 @@ impl CounterState {
 
 struct CounterReactor {
     state: CounterState,
+    stream: GlocStream<CounterState>,
 }
 
 impl CounterReactor {
     fn new(initial: i32) -> Self {
+        let state = CounterState::new(initial);
         Self {
-            state: CounterState::new(initial),
+            stream: GlocStream::new(state.clone()),
+            state,
         }
     }
 
@@ -52,17 +55,20 @@ impl Reactor for CounterReactor {
 
     fn emit(&mut self, next: CounterState) {
         if next != self.state {
-            self.state = next;
+            let old = self.state.clone();
+            self.state = next.clone();
+            self.stream.emit_transition(&old, &next);
         }
+    }
+
+    fn stream(&self) -> GlocStream<CounterState> {
+        self.stream.clone()
     }
 }
 
-/// Builds a shared `GlocProvider<CounterReactor>` with the given initial count.
-/// Returns the consumer; cloning it gives additional consumers sharing the same reactor.
 fn make_consumer(initial: i32) -> GlocProvider<CounterReactor> {
     let reactor = Arc::new(Mutex::new(CounterReactor::new(initial)));
-    let stream = GlocStream::new(CounterState::new(initial));
-    GlocProvider::new(reactor, stream)
+    GlocProvider::new(reactor)
 }
 
 // ---------------------------------------------------------------------------
@@ -91,7 +97,7 @@ mod stream_tests {
         let log: Arc<Mutex<Vec<(i32, i32)>>> = Arc::new(Mutex::new(vec![]));
         let log_clone = log.clone();
 
-        stream.listen(move |old, new| {
+        let _h = stream.listen(move |old, new| {
             log_clone.lock().unwrap().push((old.count, new.count));
         });
 
@@ -107,10 +113,10 @@ mod stream_tests {
         let log: Arc<Mutex<Vec<i32>>> = Arc::new(Mutex::new(vec![]));
 
         let l1 = log.clone();
-        stream.listen(move |_, new| l1.lock().unwrap().push(*new * 10));
+        let _h1 = stream.listen(move |_, new| l1.lock().unwrap().push(*new * 10));
 
         let l2 = log.clone();
-        stream.listen(move |_, new| l2.lock().unwrap().push(*new * 100));
+        let _h2 = stream.listen(move |_, new| l2.lock().unwrap().push(*new * 100));
 
         stream.emit_transition(&0, &1);
 
@@ -163,7 +169,7 @@ mod stream_tests {
         let fired = Arc::new(Mutex::new(false));
         let f = fired.clone();
 
-        sub.listen(move |_, _| *f.lock().unwrap() = true);
+        let _h = sub.listen(move |_, _| *f.lock().unwrap() = true);
         stream.emit_transition(&0, &1);
 
         assert!(*fired.lock().unwrap());
@@ -209,7 +215,7 @@ mod consumer_tests {
         let log: Arc<Mutex<Vec<(i32, i32)>>> = Arc::new(Mutex::new(vec![]));
         let log_clone = log.clone();
 
-        consumer.listen(move |old, new| {
+        let _h = consumer.listen(move |old, new| {
             log_clone.lock().unwrap().push((old.count, new.count));
         });
 
@@ -225,7 +231,7 @@ mod consumer_tests {
         let count = Arc::new(Mutex::new(0_u32));
         let c = count.clone();
 
-        consumer.listen(move |_, _| *c.lock().unwrap() += 1);
+        let _h = consumer.listen(move |_, _| *c.lock().unwrap() += 1);
         consumer.update(|r| r.reset()); // already at 0 — no-op
 
         assert_eq!(*count.lock().unwrap(), 0);
@@ -265,7 +271,7 @@ mod listener_tests {
         let consumer = make_consumer(0);
         let log: Arc<Mutex<Vec<(i32, i32)>>> = Arc::new(Mutex::new(vec![]));
 
-        consumer.attach_listener(TransitionLogger { log: log.clone() });
+        let _h = consumer.attach_listener(TransitionLogger { log: log.clone() });
         consumer.update(|r| r.increment());
         consumer.update(|r| r.increment());
 
@@ -277,7 +283,7 @@ mod listener_tests {
         let consumer = make_consumer(0);
         let log: Arc<Mutex<Vec<(i32, i32)>>> = Arc::new(Mutex::new(vec![]));
 
-        consumer.attach_listener(TransitionLogger { log: log.clone() });
+        let _h = consumer.attach_listener(TransitionLogger { log: log.clone() });
         consumer.update(|r| r.reset()); // already 0 — no-op
 
         assert!(log.lock().unwrap().is_empty());
@@ -290,8 +296,8 @@ mod listener_tests {
         let log1: Arc<Mutex<Vec<(i32, i32)>>> = Arc::new(Mutex::new(vec![]));
         let log2: Arc<Mutex<Vec<(i32, i32)>>> = Arc::new(Mutex::new(vec![]));
 
-        consumer.attach_listener(TransitionLogger { log: log1.clone() });
-        consumer.attach_listener(TransitionLogger { log: log2.clone() });
+        let _h1 = consumer.attach_listener(TransitionLogger { log: log1.clone() });
+        let _h2 = consumer.attach_listener(TransitionLogger { log: log2.clone() });
 
         consumer.update(|r| r.increment());
 

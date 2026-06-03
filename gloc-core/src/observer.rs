@@ -65,27 +65,60 @@ use std::sync::{Arc, OnceLock, RwLock};
 /// - Implementations must not block or call `emit()` — doing so will deadlock.
 /// - All methods must be `Send + Sync` since the observer is shared globally.
 pub trait GlocObserver: Send + Sync + 'static {
-    /// Called on every real state transition (`old != new`).
+    /// Called on every real state transition with **Debug-formatted strings**.
+    ///
+    /// Implement this for simple logging and string-based diagnostics.
     ///
     /// # Parameters
     ///
-    /// - `reactor_name` — the fully-qualified Rust type name of the reactor,
-    ///   e.g. `"my_app::counter::CounterReactor"`. Use `split("::").last()`
-    ///   if you only want the short name.
-    /// - `old` — the previous state formatted with `{:?}`
-    /// - `new` — the new state formatted with `{:?}`
-    fn on_transition(&self, reactor_name: &str, old: &str, new: &str);
+    /// - `reactor_name` — fully-qualified Rust type name, e.g.
+    ///   `"my_app::counter::CounterReactor"`. Use `.split("::").last()` for
+    ///   the short name.
+    /// - `old` — previous state as `"{:?}"`
+    /// - `new` — new state as `"{:?}"`
+    fn on_transition(&self, reactor_name: &str, old: &str, new: &str) {
+        let _ = (reactor_name, old, new);
+    }
 
-    /// Called when a reactor enters a managed scope.
+    /// Called on every real state transition with the **actual state values**.
     ///
-    /// Default implementation is a no-op.
+    /// Implement this for structured logging, analytics, or pattern matching
+    /// on real state types — downcast with `old.downcast_ref::<MyState>()`.
+    ///
+    /// Both `on_transition` (strings) and `on_change` (typed) fire on every
+    /// transition. Implement whichever fits your use case, or both.
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use gloc_core::observer::GlocObserver;
+    ///
+    /// #[derive(Clone, PartialEq, Debug)]
+    /// struct CounterState { count: i32 }
+    ///
+    /// struct Analytics;
+    ///
+    /// impl GlocObserver for Analytics {
+    ///     fn on_change(&self, reactor_name: &str, old: &dyn std::any::Any, new: &dyn std::any::Any) {
+    ///         if let (Some(o), Some(n)) = (
+    ///             old.downcast_ref::<CounterState>(),
+    ///             new.downcast_ref::<CounterState>(),
+    ///         ) {
+    ///             println!("{reactor_name}: {} → {}", o.count, n.count);
+    ///         }
+    ///     }
+    /// }
+    /// ```
+    fn on_change(&self, reactor_name: &str, old: &dyn std::any::Any, new: &dyn std::any::Any) {
+        let _ = (reactor_name, old, new);
+    }
+
+    /// Called when a reactor is created. Default is a no-op.
     fn on_create(&self, reactor_name: &str) {
         let _ = reactor_name;
     }
 
-    /// Called when a reactor leaves its managed scope.
-    ///
-    /// Default implementation is a no-op.
+    /// Called when a reactor is closed. Default is a no-op.
     fn on_close(&self, reactor_name: &str) {
         let _ = reactor_name;
     }

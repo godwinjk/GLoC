@@ -20,38 +20,31 @@
 //!
 //! ## Quick start — Reactor
 //!
+//! The recommended way is the `#[reactor]` macro (from the `gloc` crate) which
+//! generates all boilerplate automatically. For manual implementation:
+//!
 //! ```rust
 //! use gloc_core::{Reactor, State};
+//! use gloc_core::stream::GlocStream;
 //!
 //! // 1. Define your state.
 //! #[derive(Clone, PartialEq, Debug)]
-//! struct CounterState {
-//!     count: i32,
-//! }
+//! struct CounterState { count: i32 }
 //!
-//! // 2. Define your reactor.
+//! // 2. Define your reactor — carry a GlocStream for fan-out reactivity.
 //! struct CounterReactor {
-//!     state: CounterState,
+//!     state:  CounterState,
+//!     stream: GlocStream<CounterState>,
 //! }
 //!
 //! impl CounterReactor {
-//!     pub fn new() -> Self {
-//!         Self { state: CounterState { count: 0 } }
+//!     pub fn new(count: i32) -> Self {
+//!         let state = CounterState { count };
+//!         Self { stream: GlocStream::new(state.clone()), state }
 //!     }
-//!
-//!     pub fn increment(&mut self) {
-//!         let next = self.state().count + 1;
-//!         self.emit(CounterState { count: next });
-//!     }
-//!
-//!     pub fn decrement(&mut self) {
-//!         let next = self.state().count - 1;
-//!         self.emit(CounterState { count: next });
-//!     }
-//!
-//!     pub fn reset(&mut self) {
-//!         self.emit(CounterState { count: 0 });
-//!     }
+//!     pub fn increment(&mut self) { self.emit(CounterState { count: self.state().count + 1 }); }
+//!     pub fn decrement(&mut self) { self.emit(CounterState { count: self.state().count - 1 }); }
+//!     pub fn reset(&mut self)     { self.emit(CounterState { count: 0 }); }
 //! }
 //!
 //! // 3. Implement the trait.
@@ -61,14 +54,24 @@
 //!     fn state(&self) -> &CounterState { &self.state }
 //!
 //!     fn emit(&mut self, next: CounterState) {
-//!         if &next != self.state() {
-//!             self.state = next;
+//!         if next != self.state {
+//!             let old = self.state.clone();
+//!             self.state = next.clone();
+//!             self.stream.emit_transition(&old, &next); // notifies all subscribers
 //!         }
 //!     }
+//!
+//!     fn stream(&self) -> GlocStream<CounterState> { self.stream.clone() }
 //! }
 //!
 //! // 4. Use it.
-//! let mut counter = CounterReactor::new();
+//! let mut counter = CounterReactor::new(0);
+//!
+//! // Subscribe before mutating — receives every real transition.
+//! counter.stream().listen(|old, new| {
+//!     println!("{} → {}", old.count, new.count);
+//! });
+//!
 //! counter.increment();
 //! counter.increment();
 //! assert_eq!(counter.state().count, 2);
@@ -93,4 +96,4 @@ pub use observer::{clear_observer, observer, set_observer, GlocObserver};
 pub use provider::GlocProvider;
 pub use reactor::{Reactor, ReactorBase};
 pub use state::State;
-pub use stream::{GlocStream, GlocSubscription};
+pub use stream::{GlocStream, GlocSubscription, ListenerHandle};

@@ -9,19 +9,21 @@
 //! # Quick start
 //!
 //! ```rust,no_run
-//! use gloc::Reactor;
+//! use gloc::{Reactor, GlocStream};
 //! use gloc_axum::{new_axum_state, AxumReactor};
 //!
 //! #[derive(Clone, PartialEq, Debug)]
 //! struct CounterState { pub count: i32 }
 //!
-//! struct CounterReactor { state: CounterState }
+//! struct CounterReactor { state: CounterState, stream: GlocStream<CounterState> }
 //!
 //! impl CounterReactor {
-//!     fn new() -> Self { Self { state: CounterState { count: 0 } } }
+//!     fn new() -> Self {
+//!         let state = CounterState { count: 0 };
+//!         Self { stream: GlocStream::new(state.clone()), state }
+//!     }
 //!     fn increment(&mut self) {
-//!         let next = self.state().count + 1;
-//!         self.emit(CounterState { count: next });
+//!         self.emit(CounterState { count: self.state().count + 1 });
 //!     }
 //! }
 //!
@@ -29,8 +31,13 @@
 //!     type State = CounterState;
 //!     fn state(&self) -> &CounterState { &self.state }
 //!     fn emit(&mut self, next: CounterState) {
-//!         if &next != self.state() { self.state = next; }
+//!         if next != self.state {
+//!             let old = self.state.clone();
+//!             self.state = next.clone();
+//!             self.stream.emit_transition(&old, &next);
+//!         }
 //!     }
+//!     fn stream(&self) -> GlocStream<CounterState> { self.stream.clone() }
 //! }
 //!
 //! // One call — ready to pass to Router::with_state()
@@ -43,7 +50,7 @@ use std::ops::Deref;
 use std::sync::{Arc, Mutex};
 
 use gloc::provider::GlocProvider;
-use gloc::stream::GlocStream;
+
 use gloc::Reactor;
 
 /// Wraps a reactor into a [`GlocProvider`] that satisfies Axum's
@@ -64,9 +71,10 @@ use gloc::Reactor;
 /// # use gloc::Reactor;
 /// # use gloc_axum::new_axum_state;
 /// # #[derive(Clone, PartialEq, Debug)] struct S(i32);
-/// # struct R { s: S }
-/// # impl R { fn new() -> Self { Self { s: S(0) } } }
-/// # impl Reactor for R { type State = S; fn state(&self) -> &S { &self.s } fn emit(&mut self, s: S) { if &s != &self.s { self.s = s; } } }
+/// # use gloc::GlocStream;
+/// # struct R { s: S, stream: GlocStream<S> }
+/// # impl R { fn new() -> Self { let s = S(0); Self { stream: GlocStream::new(s.clone()), s } } }
+/// # impl Reactor for R { type State = S; fn state(&self) -> &S { &self.s } fn emit(&mut self, s: S) { if &s != &self.s { let o = self.s.clone(); self.s = s.clone(); self.stream.emit_transition(&o, &s); } } fn stream(&self) -> GlocStream<S> { self.stream.clone() } }
 /// let state = new_axum_state(R::new());
 /// // pass `state` to axum::Router::with_state(state)
 /// ```
@@ -75,10 +83,8 @@ where
     R: Reactor + Send + 'static,
     R::State: Clone + PartialEq + Debug + Send + 'static,
 {
-    let initial = reactor.state().clone();
-    let stream = GlocStream::new(initial);
     let shared = Arc::new(Mutex::new(reactor));
-    GlocProvider::new(shared, stream)
+    GlocProvider::new(shared)
 }
 
 /// A newtype around [`GlocProvider<R>`] that makes its Axum-compatibility
@@ -105,9 +111,10 @@ where
 /// # use gloc::Reactor;
 /// # use gloc_axum::AxumReactor;
 /// # #[derive(Clone, PartialEq, Debug)] struct S(i32);
-/// # struct R { s: S }
-/// # impl R { fn new() -> Self { Self { s: S(0) } } }
-/// # impl Reactor for R { type State = S; fn state(&self) -> &S { &self.s } fn emit(&mut self, s: S) { if &s != &self.s { self.s = s; } } }
+/// # use gloc::GlocStream;
+/// # struct R { s: S, stream: GlocStream<S> }
+/// # impl R { fn new() -> Self { let s = S(0); Self { stream: GlocStream::new(s.clone()), s } } }
+/// # impl Reactor for R { type State = S; fn state(&self) -> &S { &self.s } fn emit(&mut self, s: S) { if &s != &self.s { let o = self.s.clone(); self.s = s.clone(); self.stream.emit_transition(&o, &s); } } fn stream(&self) -> GlocStream<S> { self.stream.clone() } }
 /// let state = AxumReactor::new(R::new());
 /// let count = state.state().0;   // Deref into GlocProvider
 /// ```

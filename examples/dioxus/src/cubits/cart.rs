@@ -80,36 +80,14 @@ pub struct CartState {
     pub status: CartStatus,
 }
 
-impl CartState {
-    /// Constructs an empty initial state.
-    pub fn empty() -> Self {
+impl Default for CartState {
+    fn default() -> Self {
         Self {
             items: vec![],
             subtotal: 0.0,
             discount: 0.0,
             total: 0.0,
             status: CartStatus::Empty,
-        }
-    }
-
-    /// Rebuilds all computed fields from `items` and `discount`.
-    ///
-    /// Called internally by the cubit after every mutation so every
-    /// field in the state is always consistent.
-    fn recompute(items: Vec<CartItem>, discount: f64) -> Self {
-        let subtotal = items.iter().map(|i| i.price).sum::<f64>();
-        let total = subtotal * (1.0 - discount);
-        let status = if items.is_empty() {
-            CartStatus::Empty
-        } else {
-            CartStatus::Active
-        };
-        Self {
-            items,
-            subtotal,
-            discount,
-            total,
-            status,
         }
     }
 }
@@ -129,26 +107,19 @@ pub struct CartReactor {}
 
 impl CartReactor {
     /// Adds an item to the cart and recomputes all totals.
-    ///
-    /// # Parameters
-    /// - `name`  — product name
-    /// - `price` — product price
     pub fn add_item(&mut self, name: &str, price: f64) {
         if matches!(self.state().status, CartStatus::CheckedOut) {
-            return; // locked after checkout
+            return;
         }
         let mut items = self.state().items.clone();
         items.push(CartItem {
             name: name.to_string(),
             price,
         });
-        self.emit(CartState::recompute(items, self.state().discount));
+        self.emit(self.recompute(items, self.state().discount));
     }
 
     /// Removes the item at `index` from the cart.
-    ///
-    /// # Parameters
-    /// - `index` — position of the item to remove
     pub fn remove_item(&mut self, index: usize) {
         if matches!(self.state().status, CartStatus::CheckedOut) {
             return;
@@ -156,20 +127,16 @@ impl CartReactor {
         let mut items = self.state().items.clone();
         if index < items.len() {
             items.remove(index);
-            self.emit(CartState::recompute(items, self.state().discount));
+            self.emit(self.recompute(items, self.state().discount));
         }
     }
 
-    /// Applies a discount percentage to the cart.
-    ///
-    /// # Parameters
-    /// - `pct` — discount as a fraction between 0.0 and 1.0, e.g. `0.1` = 10% off
+    /// Applies a discount percentage (0.0–1.0) to the cart.
     pub fn apply_discount(&mut self, pct: f64) {
         if matches!(self.state().status, CartStatus::CheckedOut) {
             return;
         }
-        let pct = pct.clamp(0.0, 1.0);
-        self.emit(CartState::recompute(self.state().items.clone(), pct));
+        self.emit(self.recompute(self.state().items.clone(), pct.clamp(0.0, 1.0)));
     }
 
     /// Removes any applied discount.
@@ -178,9 +145,7 @@ impl CartReactor {
         self.apply_discount(0.0);
     }
 
-    /// Places the order — transitions cart to `CheckedOut`.
-    ///
-    /// The cart is locked after this; no further items can be added or removed.
+    /// Places the order — transitions cart to `CheckedOut` and locks it.
     pub fn checkout(&mut self) {
         if !matches!(self.state().status, CartStatus::Active) {
             return;
@@ -190,9 +155,30 @@ impl CartReactor {
         self.emit(next);
     }
 
-    /// Clears the cart and resets to empty.
+    /// Clears the cart and resets to the default empty state.
     pub fn clear(&mut self) {
-        self.emit(CartState::empty());
+        self.emit(CartState::default());
+    }
+
+    /// Derives a new `CartState` from raw `items` and `discount`.
+    ///
+    /// All computed fields (`subtotal`, `total`, `status`) are calculated here
+    /// so the reactor — not the state — owns the derivation logic.
+    fn recompute(&self, items: Vec<CartItem>, discount: f64) -> CartState {
+        let subtotal = items.iter().map(|i| i.price).sum::<f64>();
+        let total = subtotal * (1.0 - discount);
+        let status = if items.is_empty() {
+            CartStatus::Empty
+        } else {
+            CartStatus::Active
+        };
+        CartState {
+            items,
+            subtotal,
+            discount,
+            total,
+            status,
+        }
     }
 }
 
@@ -207,7 +193,7 @@ mod tests {
     use super::*;
 
     fn cart() -> CartReactor {
-        CartReactor::new(CartState::empty())
+        CartReactor::new(CartState::default())
     }
 
     // ---- happy path ----
@@ -282,7 +268,7 @@ mod tests {
         let tester = ReactorTester::new(cart());
         tester.act(|r| r.add_item("Book", 12.99));
         tester.act(|r| r.clear());
-        assert_eq!(tester.state(), CartState::empty());
+        assert_eq!(tester.state(), CartState::default());
     }
 
     // ---- edge cases ----
@@ -321,7 +307,7 @@ mod tests {
 
     #[test]
     fn clear_on_empty_cart_emits_nothing() {
-        // CartState::empty() == CartState::empty() — change-detection swallows it.
+        // CartState::default() == CartState::default() — change-detection swallows it.
         reactor_test! {
             build: cart(),
             acts: [|r| r.clear()],

@@ -2,7 +2,7 @@
 
 # GLoC
 ![GLoC](asset/gloc_logo.svg)
-_The **G** is intentional. GLoc started as a hobby project called **G**odwin's **B**usiness **L**ogic **C**omponent,
+_The **G** is intentional. GLoC started as a hobby project called **G**odwin's **L**ogic **C**omponent,
 born from a mission to bring Flutter's legendary **BLoC** architecture into Rust.
 But as it grows to serve the wider open-source community, that **G** now stands for **Global**.
 One pattern. Universal. Everywhere Rust runs._
@@ -25,10 +25,9 @@ GLoC is inspired by Flutter's [Bloc](https://bloclibrary.dev) architecture — b
 It separates **business logic** from **presentation** in any Rust application and works
 anywhere Rust runs: web frontends, desktop GUIs, backend servers, CLIs, and embedded targets.
 
-The core abstraction is **`Reactor`** — a single unit that owns one slice of domain state
-and exposes domain methods that transition it. Unlike Flutter Bloc which has separate
-`Cubit` and `Bloc` types, GLoC has one: a `Reactor` supports both direct method calls
-and event dispatch.
+The core abstraction is **`Reactor`** — a single unit that owns one slice of domain state,
+exposes domain methods that transition it, and carries a **built-in reactive stream** that
+broadcasts every real transition to all subscribers automatically.
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
@@ -49,17 +48,17 @@ and event dispatch.
 
 - [Concepts](#concepts)
 - [Installation](#installation)
-- [The story](#the-story)
 - [Quick Start](#quick-start)
   - [Reactor — direct methods](#reactor--direct-methods)
   - [Reactor — event-driven dispatch](#reactor--event-driven-dispatch)
   - [Shared reactor across owners](#shared-reactor-across-owners)
 - [Define State](#define-state)
 - [Define a Reactor](#define-a-reactor)
+- [Reactive Stream](#reactive-stream)
 - [Observers](#observers)
-- [Reactive Layer](#reactive-layer)
-- [Dioxus Example](#dioxus-example)
+- [Dioxus Integration](#dioxus-integration)
 - [Feature Flags](#feature-flags)
+- [Project Structure](#project-structure)
 - [Contributing](#contributing)
 - [License](#license)
 
@@ -69,9 +68,9 @@ and event dispatch.
 
 ### ⚛️ Reactor
 
-A **Reactor** is the central unit of business logic in GLoC — the equivalent of a BLoC in Flutter or a ViewModel in other architectures. It owns the current **State**, exposes methods to mutate it, and emits a new state to all subscribers whenever something changes.
-
-You define a reactor as a plain Rust struct annotated with `#[reactor]`. GLoC generates the reactive plumbing — subscription, change detection, and provider wiring — so you only write the logic that matters.
+A **Reactor** owns one slice of domain state, exposes methods to mutate it, and
+carries a **built-in `GlocStream`** — a fan-out reactive stream that broadcasts
+every real transition to all subscribers automatically.
 
 ```rust
 #[reactor(state = CounterState)]
@@ -80,60 +79,55 @@ pub struct CounterReactor {}
 impl CounterReactor {
     pub fn increment(&mut self) {
         self.emit(CounterState { count: self.count + 1 });
+        // emit() → stream fires → all subscribers notified
     }
 }
 ```
 
-A reactor that also accepts **Neutrons** receives them through a generated `fire()` method and routes them to your `on_event` handler, keeping dispatch decoupled from the call site.
+Unlike Flutter Bloc which has separate `Cubit` and `Bloc` types, GLoC has one:
+a `Reactor` supports both direct method calls and event dispatch via `fire()`.
 
 ---
 
 ### ☢️ Neutron (Event)
 
-A **Neutron** is an immutable event fired *at* a reactor — the signal that triggers a state transition. The name follows GLoC's nuclear fission theme: a neutron strikes the reactor core and causes a reaction.
+A **Neutron** is an immutable event fired *at* a reactor. The name follows GLoC's
+nuclear fission theme: a neutron strikes the reactor and causes a reaction.
 
-Neutrons can be **enums, structs, or any type** that satisfies `Debug + Send + 'static` — no base trait to extend or import. Enums are the most common choice when a reactor handles multiple distinct events:
+Any type satisfying `Debug + Send + 'static` is automatically a `Neutron`:
 
 ```rust
 #[derive(Debug)]
-pub enum CounterNeutron {
-    Increment,
-    Decrement,
-    Reset,
-}
+pub enum CounterEvent { Increment, Decrement, AddBy(i32), Reset }
 
 impl CounterReactor {
-    fn on_event(&mut self, neutron: CounterNeutron) {
-        match neutron {
-            CounterNeutron::Increment => self.emit(CounterState { count: self.count + 1 }),
-            CounterNeutron::Decrement => self.emit(CounterState { count: self.count - 1 }),
-            CounterNeutron::Reset     => self.emit(CounterState { count: 0 }),
+    fn on_event(&mut self, event: CounterEvent) {
+        match event {
+            CounterEvent::Increment  => self.emit(CounterState { count: self.count + 1 }),
+            CounterEvent::Decrement  => self.emit(CounterState { count: self.count - 1 }),
+            CounterEvent::AddBy(n)   => self.emit(CounterState { count: self.count + n }),
+            CounterEvent::Reset      => self.emit(CounterState { count: 0 }),
         }
     }
 }
 
-// At the call site:
-reactor.fire(CounterNeutron::Increment);
+reactor.fire(CounterEvent::Increment);
 ```
-
-Neutrons are consumed on dispatch — not cloned or stored. `Event` is kept as a type alias for backward compatibility, but **Neutron is the preferred term**.
 
 ---
 
 ### 🔋 State
 
-**State** is a snapshot of everything a reactor knows at a given moment — pure data, no behaviour. Any type that implements `Clone + PartialEq + Debug` is automatically a `State`. Use `#[reactor_state]` to skip writing the derives:
+Any `Clone + PartialEq + Debug` type is automatically a `State`. Use `#[reactor_state]`
+to skip writing the derives:
 
 ```rust
 #[reactor_state]
-pub struct CounterState {
-    pub count: i32,
-}
+pub struct CounterState { pub count: i32 }
 ```
 
-GLoC performs **change detection**: calling `emit()` with a value equal to the current state is a no-op — no notification is sent and no re-render is triggered. Only genuine transitions propagate.
-
-State is always read through the reactor — directly via `Deref` (`reactor.count`) or through a subscription stream. Subscribers always receive the latest value and are notified on every real transition.
+GLoC performs **change detection**: emitting a value equal to the current state is a
+no-op — no stream notification, no re-render.
 
 ---
 
@@ -141,93 +135,43 @@ State is always read through the reactor — directly via `Deref` (`reactor.coun
 
 | Concept | Description |
 |---------|-------------|
-| **`emit()`** | State-transition primitive inside a reactor. Built-in change detection — emitting the same value is a no-op. |
-| **`GlocStream`** | Reactive state container — notifies listeners on every real transition. |
-| **`GlocProvider`** | Shared `Arc<Mutex<R>>` handle for reading and mutating a reactor across threads or components. |
-| **`GlocListener`** | Trait for typed `old → new` transition observers. |
-| **`GlocObserver`** | Global observer that receives every transition across all reactors. |
+| **`GlocStream`** | Built-in fan-out stream on every reactor. Notifies all subscribers on every real transition. |
+| **`ListenerHandle`** | RAII cancel token returned by every `listen()` call. Drop to cancel automatically. |
+| **`GlocProvider`** | `Arc<Mutex<R>>` wrapper for shared multi-owner reactor access across threads. |
+| **`GlocListener`** | Typed trait for `old → new` observation on a specific reactor. |
+| **`GlocObserver`** | Global hook — sees every reactor in the app. Supports both Debug strings and typed `&dyn Any`. |
 
 ---
 
 ## Installation
 
-Add a single dependency — `gloc` includes both the core traits and the `#[reactor]` macro:
+```toml
+[dependencies]
+gloc = "0.3"
+```
+
+For Dioxus desktop:
 
 ```toml
 [dependencies]
-gloc = "0.2"
+gloc        = "0.3"
+gloc-dioxus = "0.3"
+dioxus      = { version = "0.7", features = ["desktop"] }
 ```
 
-Then import everything from one place:
-
-```rust
-use gloc::{reactor, Reactor, State, ReactorBase};
-```
-
-**Advanced** — use the individual crates if you only need part of the library:
+With tracing:
 
 ```toml
 [dependencies]
-gloc-core  = "0.2"   # traits only — Reactor, State, ReactorBase
-gloc-macro = "0.2"   # #[reactor] macro only
-```
-
-**With tracing** — logs every state transition via the [`tracing`](https://crates.io/crates/tracing) crate:
-
-```toml
-[dependencies]
-gloc    = { version = "0.2", features = ["tracing"] }
+gloc    = { version = "0.3", features = ["tracing"] }
 tracing = "0.1"
 ```
-
----
-
-## The story
-
-GLoC began as a hobby experiment — **G**odwin's **L**ogic **C**omponent — by a Flutter developer who jumped into Rust and immediately hit a wall.
-Coming from Flutter, BLoC and Cubit weren't just patterns — they were second nature. A clean boundary between logic and UI, testable in isolation, 
-portable across any host. But in Rust? Nothing came close. Every framework had its own way of doing things, and the business logic you actually cared about kept getting buried under framework glue that should never have touched it in the first place.
-So instead of waiting, GLoC was born.
-Build a Dioxus desktop app. Port the same logic to an Axum backend. Drop it into a Bevy game. 
-With GLoC, the logic stays exactly as it was — no rewrites, no adapters, no compromise.
-Not just UI frameworks. Any Rust application, anywhere Rust runs.
-
-### The abstraction
-
-The **Reactor** is the core idea. A plain Rust struct that owns one slice of domain state
-and exposes methods to transition it. Zero framework imports. Zero async runtime. Zero
-signals. Write it once; it runs unchanged everywhere:
-
-| Where | How you wire it |
-|-------|----------------|
-| Unit test | `CounterReactor::new(...)` — call it directly |
-| Dioxus desktop | `use_gloc_provide(|| CounterReactor::new(...))` |
-| Axum backend | `AxumReactor<CounterReactor>` as Axum state |
-| Bevy game | `GlocPlugin::<CounterReactor>` as an ECS resource |
-| CLI / threads | `GlocProvider::new(...)` — share across threads |
-
-The reactor never changes. The framework does.
-
-### For the Rust community
-
-The ecosystem is expanding in every direction at once — desktop, web, embedded, games,
-backend — and each corner is reinventing state management from scratch. GLoC wants to end
-that fragmentation.
-
-Not by being another framework. By being a **shared vocabulary for state**: one pattern
-that travels with you from a weekend project to a production app, from a solo experiment
-to a team codebase, from a CLI tool to a shipped product.
-
-If you learn it once, your business logic is portable forever.
-
 
 ---
 
 ## Quick Start
 
 ### Reactor — direct methods
-
-The common case. Create a reactor, call methods, listen to transitions.
 
 ```rust
 use gloc::{reactor, reactor_state, Reactor};
@@ -245,22 +189,24 @@ impl CounterReactor {
 }
 
 fn main() {
-    let mut counter = CounterReactor::new(CounterState { count: 0 });
+    let reactor = CounterReactor::new(CounterState { count: 0 });
 
-    counter.subscribe().listen(|old, new| println!("{} → {}", old.count, new.count));
+    // Subscribe to the reactor's built-in stream
+    // Returns a ListenerHandle — keep it alive to keep listening
+    let _h = reactor.stream().listen(|old, new| {
+        println!("{} → {}", old.count, new.count);
+    });
 
-    counter.increment(); // prints: 0 → 1
-    counter.increment(); // prints: 1 → 2
+    reactor.increment(); // prints: 0 → 1
+    reactor.increment(); // prints: 1 → 2
 
-    assert_eq!(counter.state().count, 2);
-}
+    assert_eq!(reactor.state().count, 2);
+} // _h dropped → listener cancelled
 ```
 
-### Reactor — event-driven dispatch
+---
 
-Opt in to **neutron firing** by adding `neutrons = YourEvent` to the macro. GLoC generates
-a `fire()` method; you write `on_event()` to handle each variant. Both styles live on the
-same reactor — neither replaces the other.
+### Reactor — event-driven dispatch
 
 ```rust
 use gloc::{reactor, reactor_state, Reactor};
@@ -269,12 +215,7 @@ use gloc::{reactor, reactor_state, Reactor};
 pub struct CounterState { pub count: i32 }
 
 #[derive(Debug)]
-pub enum CounterEvent {
-    Increment,
-    Decrement,
-    AddBy(i32),
-    Reset,
-}
+pub enum CounterEvent { Increment, Decrement, AddBy(i32), Reset }
 
 #[reactor(state = CounterState, neutrons = CounterEvent)]
 pub struct CounterReactor {}
@@ -282,24 +223,22 @@ pub struct CounterReactor {}
 impl CounterReactor {
     fn on_event(&mut self, event: CounterEvent) {
         match event {
-            CounterEvent::Increment   => self.emit(CounterState { count: self.state().count + 1 }),
-            CounterEvent::Decrement   => self.emit(CounterState { count: self.state().count - 1 }),
-            CounterEvent::AddBy(n)    => self.emit(CounterState { count: self.state().count + n }),
-            CounterEvent::Reset       => self.emit(CounterState { count: 0 }),
+            CounterEvent::Increment  => self.emit(CounterState { count: self.count + 1 }),
+            CounterEvent::Decrement  => self.emit(CounterState { count: self.count - 1 }),
+            CounterEvent::AddBy(n)   => self.emit(CounterState { count: self.count + n }),
+            CounterEvent::Reset      => self.emit(CounterState { count: 0 }),
         }
     }
 }
 
 fn main() {
-    let mut reactor = CounterReactor::new(CounterState { count: 0 });
+    let reactor = CounterReactor::new(CounterState { count: 0 });
 
-    reactor.subscribe().listen(|old, new| println!("{} → {}", old.count, new.count));
+    let _h = reactor.stream().listen(|_, new| println!("count: {}", new.count));
 
-    reactor.fire(CounterEvent::Increment); // prints: 0 → 1
-    reactor.fire(CounterEvent::AddBy(4)); // prints: 1 → 5
-    reactor.fire(CounterEvent::Reset);    // prints: 5 → 0
-
-    assert_eq!(reactor.state().count, 0);
+    reactor.fire(CounterEvent::Increment); // count: 1
+    reactor.fire(CounterEvent::AddBy(4)); // count: 5
+    reactor.fire(CounterEvent::Reset);    // count: 0
 }
 ```
 
@@ -307,50 +246,35 @@ fn main() {
 
 ### Shared reactor across owners
 
-When multiple components or threads need to share one reactor, wrap it in a `GlocProvider`.
-All clones share the same reactor — a mutation from any one is visible to all.
+When multiple threads or components need to share one reactor, wrap it in `GlocProvider`:
 
 ```rust
-use gloc::{reactor, reactor_state, Reactor, GlocProvider, GlocStream};
 use std::sync::{Arc, Mutex};
+use gloc::{reactor, reactor_state, Reactor, GlocProvider};
 
-#[reactor_state]
-pub struct CounterState { pub count: i32 }
-
-#[reactor(state = CounterState)]
-pub struct CounterReactor {}
-
-impl CounterReactor {
-    pub fn increment(&mut self) {
-        self.emit(CounterState { count: self.state().count + 1 });
-    }
-}
+// ... reactor definition ...
 
 fn main() {
-    let initial  = CounterState { count: 0 };
-    let reactor  = Arc::new(Mutex::new(CounterReactor::new(initial.clone())));
-    let stream   = GlocStream::new(initial);
-    let provider = GlocProvider::new(reactor, stream);
+    let provider = GlocProvider::new(Arc::new(Mutex::new(
+        CounterReactor::new(CounterState { count: 0 })
+    )));
 
-    let p1 = provider.clone();
+    let p1 = provider.clone(); // cheap Arc clone — same reactor
     let p2 = provider.clone();
 
-    p1.listen(|old, new| println!("{} → {}", old.count, new.count));
+    // Listen through the shared stream — keep handle alive
+    let _h = p1.listen(|old, new| println!("{} → {}", old.count, new.count));
 
     p2.update(|r| r.increment()); // p1's listener fires: 0 → 1
     p2.update(|r| r.increment()); // p1's listener fires: 1 → 2
 
     assert_eq!(p1.state().count, 2);
-    assert_eq!(p2.state().count, 2);
 }
 ```
 
 ---
 
 ## Define State
-
-Any `Clone + PartialEq + Debug` type is automatically a `State` — no explicit impl needed.
-Use `#[reactor_state]` to skip writing the derives:
 
 ```rust
 use gloc::reactor_state;
@@ -384,26 +308,13 @@ pub struct CounterState { pub count: i32 }
 pub struct CounterReactor {}
 
 impl CounterReactor {
-    pub fn increment(&mut self) {
-        self.emit(CounterState { count: self.state().count + 1 });
-    }
-    pub fn decrement(&mut self) {
-        self.emit(CounterState { count: self.state().count - 1 });
-    }
-    pub fn reset(&mut self) {
-        self.emit(CounterState { count: 0 });
-    }
+    pub fn increment(&mut self) { self.emit(CounterState { count: self.count + 1 }); }
+    pub fn decrement(&mut self) { self.emit(CounterState { count: self.count - 1 }); }
+    pub fn reset(&mut self)     { self.emit(CounterState { count: 0 }); }
 }
-
-let mut r = CounterReactor::new(CounterState { count: 0 });
-r.increment();
-r.increment();
-assert_eq!(r.state().count, 2);
 ```
 
 ### Mode B — let GLoC generate the state struct
-
-Annotate fields with `#[state]` — the macro generates `{ReactorName}State` automatically:
 
 ```rust
 use gloc::{reactor, Reactor};
@@ -417,26 +328,19 @@ pub struct ToggleReactor {
 
 impl ToggleReactor {
     pub fn toggle(&mut self) {
-        self.emit(ToggleReactorState { active: !self.state().active });
+        self.emit(ToggleReactorState { active: !self.active });
     }
 }
-
-let mut toggle = ToggleReactor::new(ToggleReactorState { active: false });
-toggle.toggle();
-assert!(toggle.state().active);
 ```
 
 ### What the macro generates
 
-Every `#[reactor]` struct gets:
-
 | Generated | Description |
 |---|---|
-| `impl Reactor` | `state()`, `emit()` with change-detection |
-| `new(initial)` | Constructor — suppress with `no_new` |
-| `fire(neutron)` | Event dispatch — only when `neutrons = N` is set; calls `self.on_event(neutron)` |
-| `subscribe()` | Returns a `GlocSubscription` read-only handle |
-| `attach_listener(l)` | Attaches a `GlocListener` impl |
+| `impl Reactor` | `state()`, `emit()` with change-detection, `stream()` |
+| `new(initial)` | Constructor + fires `GlocObserver::on_create` |
+| `fire(neutron)` | Event dispatch — only when `neutrons = N` is set |
+| `impl Deref<Target = State>` | Access state fields directly: `reactor.count` |
 
 ### Attribute options
 
@@ -448,23 +352,65 @@ Every `#[reactor]` struct gets:
 
 ---
 
-## Observers
+## Reactive Stream
 
-Subscribe to state transitions via `subscribe().listen()`:
+Every reactor carries a **built-in `GlocStream`**. Subscribe to it for fan-out
+reactive notifications:
 
 ```rust
-let mut r = CounterReactor::new(CounterState { count: 0 });
+let reactor = CounterReactor::new(CounterState { count: 0 });
 
-r.subscribe().listen(|old, new| {
-    println!("{} → {}", old.count, new.count);
-});
+// Multiple subscribers — all fire on every emit()
+let _h1 = reactor.stream().listen(|_, new| println!("UI: {}", new.count));
+let _h2 = reactor.stream().listen(|old, new| log::info!("{old:?} → {new:?}"));
 
-r.increment(); // prints: 0 → 1
-r.increment(); // prints: 1 → 2
-r.emit(CounterState { count: 2 }); // no-op — no print
+reactor.increment(); // both listeners fire
 ```
 
-For typed observers implement `GlocListener`:
+**`ListenerHandle`** — `listen()` returns a handle. Drop it to cancel:
+
+```rust
+{
+    let _h = reactor.stream().listen(|_, new| println!("{}", new.count));
+    reactor.increment(); // fires
+} // _h dropped → listener cancelled
+reactor.increment(); // silent
+```
+
+Call `handle.forget()` to keep the listener permanently:
+
+```rust
+reactor.stream().listen(|_, new| println!("{}", new.count)).forget();
+```
+
+**Close signal** — get notified when a reactor shuts down:
+
+```rust
+let _h = reactor.stream().on_close(|| println!("reactor closed — cleaning up"));
+
+let provider = GlocProvider::new(Arc::new(Mutex::new(reactor)));
+provider.release(); // → on_close() fires, stream.close() fires callbacks
+```
+
+**Reactor-to-reactor** — one reactor subscribes to another:
+
+```rust
+// OrderReactor watches CartReactor
+let _h = cart.stream().listen(move |_, new| {
+    if new.status == CartStatus::CheckedOut {
+        order.emit(OrderState::placed());
+    }
+});
+
+// Clean up when cart is gone
+let _close = cart.stream().on_close(|| println!("cart gone"));
+```
+
+---
+
+## Observers
+
+### Typed listener — `GlocListener`
 
 ```rust
 use gloc::GlocListener;
@@ -477,18 +423,55 @@ impl GlocListener<CounterReactor> for Logger {
     }
 }
 
-r.attach_listener(Logger);
+let provider = GlocProvider::new(Arc::new(Mutex::new(counter)));
+let _h = provider.attach_listener(Logger);
+provider.update(|r| r.increment()); // prints: 0 → 1
+```
+
+### Global observer — `GlocObserver`
+
+Observe every reactor in the app from one place. Two methods for transitions:
+
+```rust
+use gloc::{GlocObserver, set_observer};
+
+struct AppLogger;
+
+impl GlocObserver for AppLogger {
+    // Debug-formatted strings — simple logging
+    fn on_transition(&self, reactor: &str, old: &str, new: &str) {
+        println!("[{reactor}] {old} → {new}");
+    }
+
+    // Typed state — structured analytics, downcast to real types
+    fn on_change(&self, reactor: &str, _old: &dyn std::any::Any, new: &dyn std::any::Any) {
+        if let Some(s) = new.downcast_ref::<CounterState>() {
+            println!("counter is now {}", s.count);
+        }
+    }
+
+    fn on_create(&self, reactor: &str) { println!("[{reactor}] created"); }
+    fn on_close(&self, reactor: &str)  { println!("[{reactor}] closed"); }
+}
+
+fn main() {
+    set_observer(AppLogger); // once, before any reactor is created
+    // ...
+}
 ```
 
 ---
 
-## Reactive Layer
+## Dioxus Integration
 
-Share a reactor across components or threads using `GlocProvider`:
+`gloc-dioxus` connects reactors to Dioxus with zero prop drilling.
+The stream→signal bridge is automatic — any `emit()` call updates the Dioxus
+signal and schedules a re-render without any manual wiring.
 
 ```rust
-use gloc::{reactor, reactor_state, Reactor, GlocProvider, GlocStream};
-use std::sync::{Arc, Mutex};
+use dioxus::prelude::*;
+use gloc::{reactor, reactor_state, Reactor};
+use gloc_dioxus::{gloc_builder, use_gloc, use_gloc_provide};
 
 #[reactor_state]
 pub struct CounterState { pub count: i32 }
@@ -497,114 +480,47 @@ pub struct CounterState { pub count: i32 }
 pub struct CounterReactor {}
 
 impl CounterReactor {
-    pub fn increment(&mut self) {
-        self.emit(CounterState { count: self.state().count + 1 });
-    }
+    pub fn increment(&mut self) { self.emit(CounterState { count: self.count + 1 }); }
+    pub fn decrement(&mut self) { self.emit(CounterState { count: self.count - 1 }); }
 }
-
-let reactor  = Arc::new(Mutex::new(CounterReactor::new(CounterState { count: 0 })));
-let stream   = GlocStream::new(CounterState { count: 0 });
-let provider = GlocProvider::new(reactor, stream);
-
-let p1 = provider.clone();
-let p2 = provider.clone();
-
-p1.listen(|old, new| println!("{} → {}", old.count, new.count));
-
-p2.update(|r| r.increment()); // p1's listener prints: 0 → 1
-
-assert_eq!(p1.state().count, 1);
-assert_eq!(p2.state().count, 1);
-```
-
----
-
-## Dioxus Example
-
-GLoC reactors integrate cleanly with any Rust UI framework. Here is the full counter
-example using [Dioxus](https://dioxuslabs.com) 0.7 desktop.
-
-The reactor is stored in a Dioxus `Signal` — reads register the component as a
-subscriber, writes trigger re-renders.
-
-```rust
-// src/reactors/counter.rs — zero Dioxus imports, pure domain logic
-use gloc::Reactor;
-use gloc::reactor;
-
-#[derive(Clone, PartialEq, Debug)]
-pub struct CounterState {
-    pub count: i32,
-    pub label: String,
-}
-
-impl CounterState {
-    pub fn new(count: i32) -> Self {
-        let label = match count {
-            i32::MIN..=-1 => "Negative",
-            0             => "Zero",
-            1..=9         => "Low",
-            10..=99       => "Medium",
-            _             => "High",
-        }.into();
-        Self { count, label }
-    }
-}
-
-#[reactor(state = CounterState)]
-pub struct CounterReactor {}
-
-impl CounterReactor {
-    pub fn increment(&mut self) {
-        self.emit(CounterState::new(self.state().count + 1));
-    }
-    pub fn decrement(&mut self) {
-        self.emit(CounterState::new(self.state().count - 1));
-    }
-    pub fn reset(&mut self) {
-        self.emit(CounterState::new(0));
-    }
-}
-```
-
-```rust
-// src/main.rs — Dioxus wiring
-#![allow(non_snake_case)]
-mod reactors;
-
-use reactors::{CounterReactor, CounterState};
-use dioxus::prelude::*;
-use gloc::Reactor;
-
-fn main() { dioxus::launch(App); }
 
 #[component]
 fn App() -> Element {
-    let reactor = use_signal(|| CounterReactor::new(CounterState::new(0)));
-    rsx! { CounterView { reactor } }
+    // Provide once at the root — accessible anywhere in the tree
+    use_gloc_provide(|| CounterReactor::new(CounterState { count: 0 }));
+    rsx! { Counter {} }
 }
 
 #[component]
-fn CounterView(reactor: Signal<CounterReactor>) -> Element {
-    let state = reactor.read().state().clone();
-    rsx! {
+fn Counter() -> Element {
+    let counter = use_gloc::<CounterReactor>(); // no prop drilling
+
+    // gloc_builder! re-runs closure on every emit() — no manual signal.set()
+    gloc_builder!(CounterReactor, |state| rsx! {
         div {
-            p { "{state.label}: {state.count}" }
-            button { onclick: move |_| reactor.write().decrement(), "−" }
-            button { onclick: move |_| reactor.write().reset(),     "Reset" }
-            button { onclick: move |_| reactor.write().increment(), "+" }
+            p { "Count: {state.count}" }
+            button { onclick: move |_| counter.update(|r| r.decrement()), "−" }
+            button { onclick: move |_| counter.update(|r| r.increment()), "+" }
         }
-    }
+    })
 }
+
+fn main() { dioxus::launch(App); }
 ```
 
-Run it:
+Full showcase with 5 pages:
 
 ```sh
 cargo run -p gloc-example-dioxus
 ```
 
-Full example source: [`examples/dioxus/`](examples/dioxus/)
+| Page | Feature |
+|------|---------|
+| /counter  | `gloc_builder!` — rebuilds on every emit |
+| /neutrons | `gloc_builder!(when:)` — rebuild guard + neutron dispatch |
+| /theme    | `gloc_consumer!(build_when:, listen_when:)` — both guards |
+| /cart     | `gloc_listener!(when:)` — side effect gated on status transition |
+| sidebar   | Mode B `#[reactor]` — shared across all pages |
 
 ---
 
@@ -612,93 +528,55 @@ Full example source: [`examples/dioxus/`](examples/dioxus/)
 
 | Crate | Feature | Effect |
 |---|---|---|
-| `gloc` | `tracing` | Enables `tracing::debug!` inside `emit()` — logs every state transition. Zero cost when disabled. |
-| `gloc-macro` | `tracing` | Same — gates the tracing call in macro-generated `emit()`. |
+| `gloc` | `tracing` | `tracing::debug!` inside `emit()` — logs every state transition. Zero cost when disabled. |
 
-Enable tracing:
-
-```toml
-[dependencies]
-gloc               = { version = "0.2", features = ["tracing"] }
-tracing            = "0.1"
-tracing-subscriber = "0.3"
-```
-
-Every `emit()` call that transitions state will log:
-
-```
-DEBUG CounterReactor{old=CounterState { count: 0 }, new=CounterState { count: 1 }}
-```
+---
 
 ## Project Structure
 
 ```
 GLoC/
-├── gloc-core/          Core traits — Reactor, State, GlocProvider, GlocStream, GlocListener, GlocObserver
-├── gloc-macro/         Proc macros — #[reactor], #[reactor_state]
-├── gloc/               Umbrella crate (published as `gloc`)
-├── gloc-axum/          Axum HTTP adapter
-├── gloc-bevy/          Bevy ECS adapter
-├── examples/
-│   ├── dioxus/         Desktop UI — Dioxus 0.7
-│   ├── axum/           HTTP API — CartReactor + InventoryReactor
-│   ├── bevy/           Headless game — PlayerReactor + WaveReactor
-│   └── cli/            Terminal REPL — task manager
-└── plugins/
-    ├── vscode/         VS Code extension — New GLoC Reactor command
-    └── intellij/       IntelliJ plugin — New GLoC Reactor action
+├── gloc-core/          Reactor, State, GlocStream, GlocProvider, GlocListener, GlocObserver
+├── gloc-macro/         #[reactor], #[reactor_state]
+├── gloc/               Umbrella crate
+├── gloc-test/          ReactorTester + reactor_test! macro
+├── gloc-dioxus/        Dioxus adapter — use_gloc_provide, use_gloc, gloc_builder!
+├── gloc-axum/          Axum adapter — AxumReactor, new_axum_state
+├── gloc-bevy/          Bevy adapter — GlocPlugin, GlocResource
+└── examples/
+    ├── dioxus/         Desktop UI — 5-page feature showcase
+    ├── axum/           HTTP API — CartReactor + InventoryReactor
+    ├── bevy/           Headless game — PlayerReactor + WaveReactor
+    └── cli/            Terminal REPL — task manager
 ```
 
 ---
 
 ## Contributing
 
-GLoC welcomes contributions of **every kind** — from first-time open-source
-contributors to seasoned Rust experts. No contribution is too small.
+GLoC welcomes contributions of every kind.
 
-> **The only hard rule:** every change must go through a Pull Request and
-> pass the full CI pipeline before it can be merged.
-
----
-
-### Ways to Contribute
-
-| Type | Examples |
-|---|---|
-| **Bug reports** | Something panics unexpectedly, wrong behaviour, misleading error message |
-| **Documentation** | Improve doc comments, fix typos, add usage examples |
-| **Tests** | Add missing test cases, improve coverage, add trybuild fail scenarios |
-| **Bug fixes** | Fix a reported issue, improve edge-case handling |
-| **New features** | New macro arguments, new generated methods |
-| **Framework adapters** | Dioxus, Axum, Bevy, Tauri, Leptos, or any other Rust framework |
-
----
-
-### Getting Started
+> **The only hard rule:** every change must go through a Pull Request and pass CI.
 
 ```sh
+# Clone and branch
 git clone https://github.com/<your-username>/gloc.git
 cd gloc
 git checkout -b feat/your-feature
-```
 
-Run the full local check suite before every push:
-
-```sh
+# Full local check suite
 cargo fmt --all
 cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace
 cargo test -p gloc-macro --test ui_tests
 ```
 
-### CI Pipeline
-
-| Job | Local command |
-|---|---|
-| **build** | `cargo build --workspace` |
-| **test** | `cargo test --workspace` |
-| **fmt** | `cargo fmt --all -- --check` |
-| **clippy** | `cargo clippy --workspace --all-targets -- -D warnings` |
+| CI Job | Local command |
+|--------|--------------|
+| build | `cargo build --workspace` |
+| test | `cargo test --workspace` |
+| fmt | `cargo fmt --all -- --check` |
+| clippy | `cargo clippy --workspace --all-targets -- -D warnings` |
 
 ---
 

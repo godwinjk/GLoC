@@ -2,7 +2,7 @@
 
 use std::sync::{Arc, Mutex};
 
-use gloc_core::{provider::GlocProvider, stream::GlocStream, Reactor};
+use gloc_core::{provider::GlocProvider, stream::ListenerHandle, Reactor};
 
 /// Shared, captured transition log. Factored out to keep struct fields readable.
 type TransitionLog<S> = Arc<Mutex<Vec<(S, S)>>>;
@@ -36,15 +36,22 @@ type TransitionLog<S> = Arc<Mutex<Vec<(S, S)>>>;
 /// #[derive(Clone, PartialEq, Debug)]
 /// struct S(i32);
 ///
-/// struct Counter { state: S }
+/// struct Counter { state: S, stream: gloc_core::stream::GlocStream<S> }
 /// impl Counter {
-///     fn new() -> Self { Self { state: S(0) } }
+///     fn new() -> Self { let s = S(0); Self { stream: gloc_core::stream::GlocStream::new(s.clone()), state: s } }
 ///     fn inc(&mut self) { let n = self.state.0 + 1; self.emit(S(n)); }
 /// }
 /// impl Reactor for Counter {
 ///     type State = S;
 ///     fn state(&self) -> &S { &self.state }
-///     fn emit(&mut self, next: S) { if next != self.state { self.state = next; } }
+///     fn emit(&mut self, next: S) {
+///         if next != self.state {
+///             let old = self.state.clone();
+///             self.state = next.clone();
+///             self.stream.emit_transition(&old, &next);
+///         }
+///     }
+///     fn stream(&self) -> gloc_core::stream::GlocStream<S> { self.stream.clone() }
 /// }
 ///
 /// let tester = ReactorTester::new(Counter::new());
@@ -59,6 +66,8 @@ where
     provider: GlocProvider<R>,
     /// Every (old, new) pair captured since construction.
     transitions: TransitionLog<R::State>,
+    /// Keeps the listener alive for the tester's lifetime.
+    _handle: ListenerHandle,
 }
 
 impl<R: Reactor + Send + 'static> ReactorTester<R>
@@ -75,21 +84,20 @@ where
     /// - `reactor` — the reactor instance under test; its current state
     ///   becomes the initial state of the harness.
     pub fn new(reactor: R) -> Self {
-        let initial = reactor.state().clone();
         let arc = Arc::new(Mutex::new(reactor));
-        let stream = GlocStream::new(initial);
-        let provider = GlocProvider::new(arc, stream);
+        let provider = GlocProvider::new(arc);
 
         let transitions: TransitionLog<R::State> = Arc::new(Mutex::new(Vec::new()));
         let tx_clone = transitions.clone();
 
-        provider.listen(move |old, new| {
+        let _handle = provider.listen(move |old, new| {
             tx_clone.lock().unwrap().push((old.clone(), new.clone()));
         });
 
         Self {
             provider,
             transitions,
+            _handle,
         }
     }
 
@@ -235,23 +243,26 @@ mod tests {
 
     struct Counter {
         state: Count,
+        stream: gloc_core::stream::GlocStream<Count>,
     }
 
     impl Counter {
         fn new(n: i32) -> Self {
-            Self { state: Count(n) }
+            let state = Count(n);
+            Self {
+                stream: gloc_core::stream::GlocStream::new(state.clone()),
+                state,
+            }
         }
 
         fn increment(&mut self) {
-            let next = self.state.0 + 1;
-            self.emit(Count(next));
+            let n = self.state.0 + 1;
+            self.emit(Count(n));
         }
-
         fn add(&mut self, n: i32) {
-            let next = self.state.0 + n;
-            self.emit(Count(next));
+            let v = self.state.0 + n;
+            self.emit(Count(v));
         }
-
         fn reset(&mut self) {
             self.emit(Count(0));
         }
@@ -266,8 +277,14 @@ mod tests {
 
         fn emit(&mut self, next: Count) {
             if next != self.state {
-                self.state = next;
+                let old = self.state.clone();
+                self.state = next.clone();
+                self.stream.emit_transition(&old, &next);
             }
+        }
+
+        fn stream(&self) -> gloc_core::stream::GlocStream<Count> {
+            self.stream.clone()
         }
     }
 

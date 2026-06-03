@@ -19,21 +19,26 @@
 //! #[derive(Clone, PartialEq, Debug)]
 //! struct CounterState { count: i32 }
 //!
-//! struct CounterReactor { state: CounterState }
+//! struct CounterReactor { state: CounterState, stream: gloc_core::stream::GlocStream<CounterState> }
 //! impl CounterReactor {
-//!     fn new() -> Self { Self { state: CounterState { count: 0 } } }
-//!     fn increment(&mut self) {
-//!         let n = self.state.count + 1;
-//!         self.emit(CounterState { count: n });
+//!     fn new() -> Self {
+//!         let state = CounterState { count: 0 };
+//!         Self { stream: gloc_core::stream::GlocStream::new(state.clone()), state }
 //!     }
+//!     fn increment(&mut self) { self.emit(CounterState { count: self.state.count + 1 }); }
 //!     fn reset(&mut self) { self.emit(CounterState { count: 0 }); }
 //! }
 //! impl Reactor for CounterReactor {
 //!     type State = CounterState;
 //!     fn state(&self) -> &CounterState { &self.state }
 //!     fn emit(&mut self, next: CounterState) {
-//!         if next != self.state { self.state = next; }
+//!         if next != self.state {
+//!             let old = self.state.clone();
+//!             self.state = next.clone();
+//!             self.stream.emit_transition(&old, &next);
+//!         }
 //!     }
+//!     fn stream(&self) -> gloc_core::stream::GlocStream<CounterState> { self.stream.clone() }
 //! }
 //!
 //! // --- tests ---

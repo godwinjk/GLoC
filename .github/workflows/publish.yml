@@ -1,11 +1,15 @@
 # CI — Publish to crates.io
 #
-# Triggered by pushing a version tag: git tag v0.1.0 && git push --tags
+# Triggered by pushing a version tag: git tag v0.2.0 && git push --tags
 #
 # Publish order matters — dependencies must be published before dependents:
-#   1. gloc-core  (core — no GLOC deps)
-#   2. gloc-macro (proc macro — no GLOC deps)
-#   3. gloc       (umbrella — depends on gloc-core + gloc-macro)
+#   1. gloc-core   (core — no GLoC deps)
+#   2. gloc-macro  (proc macro — no GLoC deps at runtime; gloc is dev-only)
+#   3. gloc        (umbrella — depends on gloc-core + gloc-macro)
+#   4. gloc-test   (test helpers — depends on gloc-core)
+#   5. gloc-axum   (Axum adapter — depends on gloc)
+#   6. gloc-bevy   (Bevy adapter — depends on gloc)
+#   7. gloc-dioxus (Dioxus adapter — depends on gloc)
 #
 # Requires a GitHub secret: CARGO_REGISTRY_TOKEN
 # Set it at: repo → Settings → Secrets → Actions → New repository secret
@@ -100,14 +104,15 @@ jobs:
         with:
           shared-key: "gloc-publish-${{ runner.os }}"
 
-      # Publish in dependency order — crates.io requires deps to exist first.
-      # `--no-verify` skips the local build check (already done in CI job above).
+      # Publish in dependency order — crates.io requires deps to exist before
+      # dependents can resolve them. `--no-verify` skips the local build check
+      # (already done in the CI job above).
+      # crates.io can take up to 60s to fully index a newly published crate,
+      # so each step sleeps before the next dependent is published.
 
       - name: Publish gloc-core
         run: cargo publish -p gloc-core --no-verify --token ${{ secrets.CARGO_REGISTRY_TOKEN }}
 
-      # crates.io can take up to 60s to fully index a newly published crate.
-      # Dependents that try to resolve it before indexing completes will fail.
       - name: Wait for crates.io to index gloc-core
         run: sleep 60
 
@@ -119,3 +124,30 @@ jobs:
 
       - name: Publish gloc (umbrella)
         run: cargo publish -p gloc --no-verify --token ${{ secrets.CARGO_REGISTRY_TOKEN }}
+
+      - name: Wait for crates.io to index gloc
+        run: sleep 60
+
+      # gloc-test depends on gloc-core (already indexed above).
+      - name: Publish gloc-test
+        run: cargo publish -p gloc-test --no-verify --token ${{ secrets.CARGO_REGISTRY_TOKEN }}
+
+      - name: Wait for crates.io to index gloc-test
+        run: sleep 60
+
+      # Adapters all depend on gloc. Publish sequentially to avoid race
+      # conditions with crates.io indexing.
+      - name: Publish gloc-axum
+        run: cargo publish -p gloc-axum --no-verify --token ${{ secrets.CARGO_REGISTRY_TOKEN }}
+
+      - name: Wait for crates.io to index gloc-axum
+        run: sleep 60
+
+      - name: Publish gloc-bevy
+        run: cargo publish -p gloc-bevy --no-verify --token ${{ secrets.CARGO_REGISTRY_TOKEN }}
+
+      - name: Wait for crates.io to index gloc-bevy
+        run: sleep 60
+
+      - name: Publish gloc-dioxus
+        run: cargo publish -p gloc-dioxus --no-verify --token ${{ secrets.CARGO_REGISTRY_TOKEN }}

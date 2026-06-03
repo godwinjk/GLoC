@@ -5,8 +5,8 @@
 //!
 //! # Design
 //!
-//! Unlike [`on_change`](crate::stream::GlocStream::listen) (which receives a
-//! closure), `GlocListener` is a **trait** — meaning any struct can implement
+//! Unlike [`stream.listen()`](crate::stream::GlocStream::listen) (which takes
+//! a closure), `GlocListener` is a **trait** — meaning any struct can implement
 //! it. This enables:
 //!
 //! - Dependency injection — pass `&dyn GlocListener` through your app
@@ -18,18 +18,32 @@
 //!
 //! ```rust
 //! use gloc_core::{Reactor, State};
+//! use gloc_core::stream::GlocStream;
 //! use gloc_core::listener::GlocListener;
 //!
 //! #[derive(Clone, PartialEq, Debug)]
 //! struct CounterState { pub count: i32 }
 //!
-//! struct CounterReactor { state: CounterState }
+//! struct CounterReactor { state: CounterState, stream: GlocStream<CounterState> }
+//!
+//! impl CounterReactor {
+//!     fn new(n: i32) -> Self {
+//!         let state = CounterState { count: n };
+//!         Self { stream: GlocStream::new(state.clone()), state }
+//!     }
+//! }
+//!
 //! impl Reactor for CounterReactor {
 //!     type State = CounterState;
 //!     fn state(&self) -> &CounterState { &self.state }
 //!     fn emit(&mut self, next: CounterState) {
-//!         if next != self.state { self.state = next; }
+//!         if next != self.state {
+//!             let old = self.state.clone();
+//!             self.state = next.clone();
+//!             self.stream.emit_transition(&old, &next);
+//!         }
 //!     }
+//!     fn stream(&self) -> GlocStream<CounterState> { self.stream.clone() }
 //! }
 //!
 //! // A listener that prints every transition
@@ -54,11 +68,11 @@ use crate::reactor::Reactor;
 ///
 /// - `R` — any type that implements [`Reactor`].
 ///
-/// # When to use `GlocListener` vs `on_change`
+/// # `GlocListener` vs `stream.listen()`
 ///
-/// | | `GlocListener` | `on_change` closure |
+/// | | `GlocListener` | `stream.listen()` closure |
 /// |---|---|---|
-/// | Syntax | `impl GlocListener<R> for MyType` | `reactor.on_change(\|old, new\| ...)` |
+/// | Syntax | `impl GlocListener<R> for MyType` | `reactor.stream().listen(\|old, new\| ...)` |
 /// | Receives | `(&old, &new)` | `(&old, &new)` |
 /// | Testable | Yes — inject `&dyn GlocListener<R>` | Harder |
 /// | Composable | Yes — any struct can implement it | No — one-off closure |
@@ -73,8 +87,10 @@ pub trait GlocListener<R: Reactor> {
     ///
     /// # Contract
     ///
-    /// - This method must not block — it is called synchronously inside `emit()`
-    /// - Do not call `emit()` from inside this method — it will deadlock
-    ///   on the stream's internal mutex
+    /// - Must not block — called synchronously inside `emit_transition`.
+    /// - May call `stream.listen()` or `stream.state()` safely — the stream
+    ///   lock is released before listeners are called.
+    /// - Must not call `emit()` on the **same** reactor from within this method —
+    ///   the reactor's `Arc<Mutex>` is still locked by the caller.
     fn on_transition(&self, old: &R::State, new: &R::State);
 }

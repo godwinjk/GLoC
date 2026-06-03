@@ -8,6 +8,7 @@
 //! - `injection`       — demonstrates Dependency Inversion via trait objects
 //! - `edge_cases`      — boundary conditions and type variety
 
+use gloc_core::stream::GlocStream;
 use gloc_core::{Neutron, Reactor, ReactorBase, State};
 
 // ---------------------------------------------------------------------------
@@ -27,15 +28,17 @@ impl CounterState {
 }
 
 /// A concrete `Reactor` implementation wrapping `CounterState`.
-/// Demonstrates the pattern users will follow in real code.
 struct CounterReactor {
     state: CounterState,
+    stream: GlocStream<CounterState>,
 }
 
 impl CounterReactor {
     fn new(initial: i32) -> Self {
+        let state = CounterState::new(initial);
         Self {
-            state: CounterState::new(initial),
+            stream: GlocStream::new(state.clone()),
+            state,
         }
     }
 
@@ -68,8 +71,14 @@ impl Reactor for CounterReactor {
 
     fn emit(&mut self, next: CounterState) {
         if next != self.state {
-            self.state = next;
+            let old = self.state.clone();
+            self.state = next.clone();
+            self.stream.emit_transition(&old, &next);
         }
+    }
+
+    fn stream(&self) -> GlocStream<CounterState> {
+        self.stream.clone()
     }
 }
 
@@ -428,13 +437,16 @@ mod injection {
     struct RecordingReactor {
         state: CounterState,
         history: Vec<CounterState>,
+        stream: GlocStream<CounterState>,
     }
 
     impl RecordingReactor {
         fn new(initial: i32) -> Self {
+            let state = CounterState::new(initial);
             Self {
-                state: CounterState::new(initial),
-                history: vec![CounterState::new(initial)],
+                stream: GlocStream::new(state.clone()),
+                history: vec![state.clone()],
+                state,
             }
         }
     }
@@ -448,9 +460,15 @@ mod injection {
 
         fn emit(&mut self, next: CounterState) {
             if next != self.state {
+                let old = self.state.clone();
                 self.state = next.clone();
-                self.history.push(next);
+                self.history.push(next.clone());
+                self.stream.emit_transition(&old, &next);
             }
+        }
+
+        fn stream(&self) -> GlocStream<CounterState> {
+            self.stream.clone()
         }
     }
 

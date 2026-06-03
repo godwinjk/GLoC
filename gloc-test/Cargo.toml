@@ -10,4 +10,4 @@ keywords = ["gloc", "testing", "state-management", "reactor"]
 categories = ["development-tools::testing", "rust-patterns"]
 
 [dependencies]
-gloc-core = { version = "0.2", path = "../gloc-core" }
+gloc-core = { version = "0.3", path = "../gloc-core" }

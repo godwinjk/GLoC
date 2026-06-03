@@ -1,18 +1,16 @@
 //! # GLoC Feature Showcase — Dioxus Desktop
 //!
-//! Demonstrates every major GLoC feature in one app, organised into
-//! clearly-labelled sections so each pattern is easy to find.
+//! Demonstrates every major GLoC feature across navigable pages.
+//! All reactors are provided **once** in `App` — `use_gloc` works from any
+//! page without prop drilling, and state persists across navigation.
 //!
-//! | Section | Reactor | Feature |
-//! |---------|---------|---------|
-//! | 1 | `CounterReactor` | `#[reactor]` Mode A — direct method calls |
-//! | 2 | `EventCounterReactor` | `neutrons = N` — neutron firing via `fire()` |
-//! | 3 | `ClickTrackerReactor` | `#[reactor]` Mode B — generated state struct |
-//! | 4 | `ThemeReactor` | Enum state + global theme |
-//! | 5 | `CartReactor` | Complex state — multiple fields in one `State` |
-//!
-//! All reactors are provided via `use_gloc_provide` in `App` and consumed
-//! with `use_gloc::<R>()` in each child component — no prop drilling.
+//! | Page      | Reactor              | Feature                                           |
+//! |-----------|----------------------|---------------------------------------------------|
+//! | /counter  | `CounterReactor`     | `gloc_builder!` — rebuilds on every emit          |
+//! | /neutrons | `EventCounterReactor`| `gloc_builder!(when:)` — rebuilds only when guard passes |
+//! | /theme    | `ThemeReactor`       | `gloc_consumer!(build_when:, listen_when:)` — both guards |
+//! | /cart     | `CartReactor`        | `gloc_listener!(when:)` — side effect gated on status |
+//! | sidebar   | `ClickTrackerReactor`| Mode B — shared across all pages                  |
 
 #![allow(non_snake_case)]
 
@@ -23,20 +21,39 @@ use cubits::{
     CounterEvent, CounterReactor, CounterState, EventCounterReactor, Theme, ThemeReactor,
 };
 use dioxus::prelude::*;
-use gloc_dioxus::{use_gloc, use_gloc_provide};
+use gloc_dioxus::{gloc_builder, gloc_consumer, gloc_listener, use_gloc, use_gloc_provide};
 
 fn main() {
-    dioxus::launch(App);
+    launch(App);
 }
 
 // ---------------------------------------------------------------------------
-// Root component — provides all reactors into the Dioxus context tree
+// Router
+// ---------------------------------------------------------------------------
+
+#[derive(Clone, Routable, PartialEq)]
+enum Route {
+    #[layout(Layout)]
+    #[route("/")]
+    Home {},
+    #[route("/counter")]
+    CounterPage {},
+    #[route("/neutrons")]
+    NeutronsPage {},
+    #[route("/theme")]
+    ThemePage {},
+    #[route("/cart")]
+    CartPage {},
+}
+
+// ---------------------------------------------------------------------------
+// App — provides all reactors, applies global theme
 // ---------------------------------------------------------------------------
 
 #[component]
 fn App() -> Element {
-    // Each call injects one reactor type into the component tree.
-    // Descendants call use_gloc::<R>() to consume — no prop drilling.
+    // Provided once here — accessible from every page via use_gloc::<R>().
+    // State is NOT reset on navigation; it persists for the app's lifetime.
     use_gloc_provide(|| CounterReactor::new(CounterState::new(0)));
     use_gloc_provide(|| EventCounterReactor::new(CounterState::new(0)));
     use_gloc_provide(|| {
@@ -46,190 +63,298 @@ fn App() -> Element {
         })
     });
     use_gloc_provide(|| ThemeReactor::new(Theme::Light));
-    use_gloc_provide(|| CartReactor::new(CartState::empty()));
+    use_gloc_provide(|| CartReactor::new(CartState::default()));
 
     let theme = use_gloc::<ThemeReactor>();
     let bg = theme.state().background().to_string();
-    let text_color = theme.state().text_color().to_string();
-    let card_bg = theme.state().card_background().to_string();
+    let text = theme.state().text_color().to_string();
 
     rsx! {
         div {
             style: "
                 font-family: system-ui, -apple-system, sans-serif;
                 min-height: 100vh;
-                padding: 32px 24px 48px;
                 background: {bg};
-                color: {text_color};
+                color: {text};
                 transition: background 0.3s, color 0.3s;
-                box-sizing: border-box;
             ",
-
-            // ── App header ────────────────────────────────────────────────
-            AppHeader {}
-
-            // ── Feature grid — 2 columns ──────────────────────────────────
-            div {
-                style: "
-                    display: grid;
-                    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-                    gap: 20px;
-                    max-width: 860px;
-                    margin: 0 auto;
-                ",
-
-                FeatureSection {
-                    badge: "Feature 1",
-                    title: "#[reactor]  Mode A",
-                    subtitle: "counter.increment()  — direct method",
-                    card_bg: card_bg.clone(),
-                    ModeAView {}
-                }
-
-                FeatureSection {
-                    badge: "Feature 2",
-                    title: "Neutron Firing",
-                    subtitle: "reactor.fire(neutron)  — neutrons = N",
-                    card_bg: card_bg.clone(),
-                    DispatchView {}
-                }
-
-                FeatureSection {
-                    badge: "Feature 3",
-                    title: "#[reactor]  Mode B",
-                    subtitle: "#[state] fields  — generated state struct",
-                    card_bg: card_bg.clone(),
-                    ModeBView {}
-                }
-
-                FeatureSection {
-                    badge: "Feature 4",
-                    title: "Enum State",
-                    subtitle: "enum Theme {{ Light, Dark }}  — any type is a State",
-                    card_bg: card_bg.clone(),
-                    EnumStateView {}
-                }
-            }
-
-            // Section 5 — Complex state (full width below the grid)
-            div {
-                style: "max-width: 860px; margin: 20px auto 0;",
-                FeatureSection {
-                    badge: "Feature 5",
-                    title: "Complex State",
-                    subtitle: "CartState {{ items, subtotal, discount, total, status }}",
-                    card_bg: card_bg.clone(),
-                    CartView {}
-                }
-            }
+            Router::<Route> {}
         }
     }
 }
 
 // ---------------------------------------------------------------------------
-// App header — consumes ThemeReactor and ClickTrackerReactor directly
+// Layout — sidebar nav + page outlet
 // ---------------------------------------------------------------------------
 
 #[component]
-fn AppHeader() -> Element {
+fn Layout() -> Element {
     let theme = use_gloc::<ThemeReactor>();
     let tracker = use_gloc::<ClickTrackerReactor>();
 
     let is_dark = theme.state() == Theme::Dark;
+    let card_bg = theme.state().card_background().to_string();
+    let border_color = if is_dark {
+        "rgba(255,255,255,0.07)"
+    } else {
+        "rgba(0,0,0,0.08)"
+    };
     let btn_bg = if is_dark { "#f0f4f8" } else { "#1a202c" };
     let btn_color = if is_dark { "#1a202c" } else { "#f0f4f8" };
     let btn_label = theme.state().label().to_string();
+    let total = tracker.state().total;
+    let last_action = tracker.state().last_action.clone();
 
     rsx! {
-        div {
-            style: "
-                max-width: 860px;
-                margin: 0 auto 28px;
-                display: flex;
-                align-items: center;
-                justify-content: space-between;
-                flex-wrap: wrap;
-                gap: 12px;
-            ",
+        div { style: "display: flex; min-height: 100vh;",
 
-            div {
-                h1 {
-                    style: "margin: 0 0 2px; font-size: 22px; font-weight: 800;",
-                    "GLoC Feature Showcase"
+            // ── Sidebar ───────────────────────────────────────────────────
+            nav {
+                style: "
+                    width: 220px; flex-shrink: 0; min-height: 100vh;
+                    background: {card_bg};
+                    border-right: 1px solid {border_color};
+                    display: flex; flex-direction: column;
+                    padding: 24px 14px;
+                    box-sizing: border-box;
+                    transition: background 0.3s;
+                ",
+
+                // Brand
+                div { style: "margin-bottom: 24px; padding-bottom: 16px; border-bottom: 1px solid {border_color};",
+                    p { style: "margin: 0; font-size: 18px; font-weight: 800; letter-spacing: -0.02em;", "GLoC" }
+                    p { style: "margin: 2px 0 0; font-size: 10px; opacity: 0.35; font-family: monospace;", "feature showcase" }
                 }
-                p {
-                    style: "margin: 0; font-size: 13px; opacity: 0.45;",
-                    "State management for any Rust application  \u{00B7}  use_gloc — no prop drilling"
+
+                // Nav links
+                p { style: "margin: 0 0 6px 4px; font-size: 9px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; opacity: 0.35;", "Pages" }
+                NavLink { to: Route::Home {},        label: "🏠  Home" }
+                NavLink { to: Route::CounterPage {},  label: "🔢  Counter" }
+                NavLink { to: Route::NeutronsPage {}, label: "⚛️   Neutrons" }
+                NavLink { to: Route::ThemePage {},    label: "🎨  Theme" }
+                NavLink { to: Route::CartPage {},     label: "🛒  Cart" }
+
+                div { style: "flex: 1;" }
+
+                // ── Feature 3: ClickTrackerReactor ─────────────────────────
+                // This widget is always visible — it proves that
+                // ClickTrackerReactor is shared across every page.
+                // Every button press on any page increments this counter.
+                div {
+                    style: "
+                        border-radius: 10px; padding: 12px; margin-bottom: 12px;
+                        background: rgba(59,130,246,0.08);
+                        border: 1px solid rgba(59,130,246,0.18);
+                    ",
+                    p { style: "margin: 0 0 6px; font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.12em; opacity: 0.45;", "Click Tracker" }
+                    p { style: "margin: 0; font-size: 30px; font-weight: 800; line-height: 1;", "{total}" }
+                    p {
+                        style: "margin: 4px 0 0; font-size: 10px; opacity: 0.38; font-family: monospace; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;",
+                        { if last_action.is_empty() { "—".to_string() } else { last_action } }
+                    }
+                    p { style: "margin: 6px 0 0; font-size: 9px; opacity: 0.25;", "#[reactor] Mode B · all pages" }
+                }
+
+                // Theme toggle
+                button {
+                    style: "
+                        width: 100%; padding: 9px; border-radius: 8px; border: none;
+                        background: {btn_bg}; color: {btn_color};
+                        font-size: 12px; font-weight: 700; cursor: pointer;
+                        transition: background 0.3s, color 0.3s;
+                    ",
+                    onclick: move |_| {
+                        theme.update(|r| r.toggle());
+                        tracker.update(|r| r.record("theme toggle"));
+                    },
+                    "{btn_label}"
                 }
             }
 
-            button {
-                style: "
-                    padding: 10px 22px; border-radius: 10px; border: none;
-                    background: {btn_bg}; color: {btn_color};
-                    font-size: 14px; font-weight: 700; cursor: pointer;
-                    transition: background 0.3s, color 0.3s; white-space: nowrap;
-                ",
-                onclick: move |_| {
-                    theme.update(|r| r.toggle());
-                    tracker.update(|r| r.record("theme toggle"));
-                },
-                "🎨  {btn_label}"
+            // ── Page content ──────────────────────────────────────────────
+            div {
+                style: "flex: 1; padding: 32px 28px; min-width: 0; box-sizing: border-box;",
+                Outlet::<Route> {}
             }
         }
     }
 }
 
+/// Sidebar navigation link.
+#[component]
+fn NavLink(to: Route, label: String) -> Element {
+    rsx! {
+        Link {
+            to,
+            style: "
+                display: block; padding: 8px 10px; border-radius: 8px;
+                text-decoration: none; color: inherit;
+                font-size: 13px; font-weight: 600; margin-bottom: 2px;
+                opacity: 0.7;
+            ",
+            "{label}"
+        }
+    }
+}
+
 // ---------------------------------------------------------------------------
-// Section wrapper — badge chip + title + subtitle + content
+// Home page
 // ---------------------------------------------------------------------------
 
 #[component]
-fn FeatureSection(
-    badge: &'static str,
-    title: &'static str,
-    subtitle: &'static str,
-    card_bg: String,
-    children: Element,
-) -> Element {
-    rsx! {
-        div {
-            style: "
-                background: {card_bg};
-                border-radius: 16px;
-                padding: 20px 24px 24px;
-                box-shadow: 0 4px 20px rgba(0,0,0,0.10);
-                display: flex;
-                flex-direction: column;
-                gap: 16px;
-                transition: background 0.3s;
-            ",
+fn Home() -> Element {
+    let theme = use_gloc::<ThemeReactor>();
+    let card_bg = theme.state().card_background().to_string();
 
+    rsx! {
+        div { style: "max-width: 600px;",
+
+            h1 { style: "margin: 0 0 8px; font-size: 26px; font-weight: 800;", "GLoC Feature Showcase" }
+            p {
+                style: "margin: 0 0 28px; font-size: 14px; opacity: 0.5; line-height: 1.65;",
+                "GLoC Reactor- Universal Rust state management "
+                "Navigate between pages using the sidebar. All reactors are provided once at the app root."
+            }
+
+            // Key concept callout
             div {
-                span {
-                    style: "
-                        display: inline-block;
-                        font-size: 10px; font-weight: 800;
-                        letter-spacing: 0.10em; text-transform: uppercase;
-                        background: rgba(59,130,246,0.15); color: #3b82f6;
-                        padding: 2px 8px; border-radius: 99px; margin-bottom: 6px;
-                    ",
-                    "{badge}"
-                }
-                p { style: "margin: 0; font-size: 15px; font-weight: 700;", "{title}" }
+                style: "
+                    background: {card_bg}; border-radius: 14px;
+                    padding: 20px 24px; margin-bottom: 24px;
+                    box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+                    border-left: 3px solid #3b82f6;
+                ",
+                p { style: "margin: 0 0 8px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; color: #3b82f6;", "Key concept" }
                 p {
-                    style: "margin: 2px 0 0; font-size: 11px; opacity: 0.40; font-family: monospace;",
-                    "{subtitle}"
+                    style: "margin: 0; font-size: 13px; line-height: 1.65; opacity: 0.7;",
+                    "All five reactors are provided via "
+                    code { style: "font-family: monospace; background: rgba(59,130,246,0.12); padding: 1px 5px; border-radius: 4px;", "use_gloc_provide" }
+                    " in "
+                    code { style: "font-family: monospace; background: rgba(59,130,246,0.12); padding: 1px 5px; border-radius: 4px;", "App()" }
+                    " — once, at startup. Any page calls "
+                    code { style: "font-family: monospace; background: rgba(59,130,246,0.12); padding: 1px 5px; border-radius: 4px;", "use_gloc::<R>()" }
+                    " to consume them. "
+                    "Navigate away and back — the counter keeps its value."
                 }
             }
 
-            { children }
+            // Feature index
+            div { style: "display: flex; flex-direction: column; gap: 10px;",
+                FeatureRow { badge: "Counter",  path: "/counter",  desc: "gloc_builder! — rebuilds on every emit (no guard)" }
+                FeatureRow { badge: "Neutrons", path: "/neutrons", desc: "gloc_builder!(when:) — rebuild guard + neutron dispatch" }
+                FeatureRow { badge: "Theme",    path: "/theme",    desc: "gloc_consumer!(build_when:, listen_when:) — both guards" }
+                FeatureRow { badge: "Cart",     path: "/cart",     desc: "gloc_listener!(when:) — side effect gated on status transition" }
+                FeatureRow { badge: "Sidebar",  path: "/",         desc: "#[reactor] Mode B — ClickTracker shared across all pages" }
+            }
+        }
+    }
+}
+
+#[component]
+fn FeatureRow(badge: &'static str, path: &'static str, desc: &'static str) -> Element {
+    let theme = use_gloc::<ThemeReactor>();
+    let card_bg = theme.state().card_background().to_string();
+
+    rsx! {
+        div {
+            style: "
+                display: flex; align-items: center; gap: 12px;
+                background: {card_bg}; border-radius: 10px; padding: 12px 16px;
+                box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+            ",
+            span {
+                style: "
+                    font-size: 10px; font-weight: 800; letter-spacing: 0.1em;
+                    text-transform: uppercase; white-space: nowrap;
+                    background: rgba(59,130,246,0.12); color: #3b82f6;
+                    padding: 3px 9px; border-radius: 99px; flex-shrink: 0;
+                ",
+                "{badge}"
+            }
+            span { style: "font-size: 13px; opacity: 0.6;", "{desc}" }
         }
     }
 }
 
 // ---------------------------------------------------------------------------
-// Feature 1 — Mode A: direct method calls
+// Feature pages — each reuses existing view components
+// ---------------------------------------------------------------------------
+
+/// Feature 1 — CounterReactor with gloc_builder!
+#[component]
+fn CounterPage() -> Element {
+    let theme = use_gloc::<ThemeReactor>();
+    let card_bg = theme.state().card_background().to_string();
+    rsx! {
+        div { style: "max-width: 420px;",
+            FeatureSection {
+                badge: "Feature 1",
+                title: "gloc_builder!",
+                subtitle: "builder re-runs on every emit — BlocBuilder",
+                card_bg,
+                ModeAView {}
+            }
+        }
+    }
+}
+
+/// Feature 2 — EventCounterReactor: neutron firing + gloc_builder!(when:)
+#[component]
+fn NeutronsPage() -> Element {
+    let theme = use_gloc::<ThemeReactor>();
+    let card_bg = theme.state().card_background().to_string();
+    rsx! {
+        div { style: "max-width: 420px;",
+            FeatureSection {
+                badge: "Feature 2",
+                title: "Neutron Firing + build_when",
+                subtitle: "gloc_builder!(when: ...) — rebuilds only when guard passes. \
+                For testing no. 3 will not be visible",
+                card_bg,
+                DispatchView {}
+            }
+        }
+    }
+}
+
+/// Feature 4 — ThemeReactor with gloc_consumer! + both guards
+#[component]
+fn ThemePage() -> Element {
+    let theme = use_gloc::<ThemeReactor>();
+    let card_bg = theme.state().card_background().to_string();
+    rsx! {
+        div { style: "max-width: 420px;",
+            FeatureSection {
+                badge: "Feature 4",
+                title: "gloc_consumer! with guards",
+                subtitle: "build_when + listen_when — BlocConsumer",
+                card_bg,
+                EnumStateView {}
+            }
+        }
+    }
+}
+
+/// Feature 5 — CartReactor with gloc_listener!(when:)
+#[component]
+fn CartPage() -> Element {
+    let theme = use_gloc::<ThemeReactor>();
+    let card_bg = theme.state().card_background().to_string();
+    rsx! {
+        div { style: "max-width: 560px;",
+            FeatureSection {
+                badge: "Feature 5",
+                title: "Complex State + gloc_listener!(when:)",
+                subtitle: "listener gated on status transition — BlocListener(listenWhen:)",
+                card_bg,
+                CartView {}
+            }
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Feature 1 — gloc_builder! (CounterReactor)
 // ---------------------------------------------------------------------------
 
 #[component]
@@ -237,23 +362,24 @@ fn ModeAView() -> Element {
     let counter = use_gloc::<CounterReactor>();
     let tracker = use_gloc::<ClickTrackerReactor>();
 
-    let count = counter.state().count;
-    let label = counter.state().label.clone();
-
-    rsx! {
+    gloc_builder!(CounterReactor, |state| rsx! {
         div { style: "display: flex; flex-direction: column; align-items: center; gap: 14px;",
 
-            p { style: "font-size: 64px; font-weight: 800; margin: 0; line-height: 1;", "{count}" }
-            span { style: "font-size: 12px; opacity: 0.45; font-weight: 600;", "{label}" }
+            p { style: "font-size: 64px; font-weight: 800; margin: 0; line-height: 1;",
+                "{state.count}"
+            }
+            span { style: "font-size: 12px; opacity: 0.45; font-weight: 600;",
+                "{state.label}"
+            }
 
-            CodeChip { text: "counter.update(|r| r.increment())" }
+            CodeChip { text: "gloc_builder!(CounterReactor, |state| rsx! {{ ... }})" }
 
             div { style: "display: flex; gap: 10px;",
                 ActionBtn {
                     color: "#ef4444",
                     onclick: move |_| {
                         counter.update(|r| r.decrement());
-                        tracker.update(|r| r.record("mode-a decrement"));
+                        tracker.update(|r| r.record("counter decrement"));
                     },
                     "−"
                 }
@@ -261,7 +387,7 @@ fn ModeAView() -> Element {
                     color: "#6b7280",
                     onclick: move |_| {
                         counter.update(|r| r.reset());
-                        tracker.update(|r| r.record("mode-a reset"));
+                        tracker.update(|r| r.record("counter reset"));
                     },
                     "Reset"
                 }
@@ -269,17 +395,17 @@ fn ModeAView() -> Element {
                     color: "#22c55e",
                     onclick: move |_| {
                         counter.update(|r| r.increment());
-                        tracker.update(|r| r.record("mode-a increment"));
+                        tracker.update(|r| r.record("counter increment"));
                     },
                     "+"
                 }
             }
         }
-    }
+    })
 }
 
 // ---------------------------------------------------------------------------
-// Feature 2 — Neutron firing
+// Feature 2 — neutron firing (EventCounterReactor)
 // ---------------------------------------------------------------------------
 
 #[component]
@@ -287,16 +413,19 @@ fn DispatchView() -> Element {
     let event_counter = use_gloc::<EventCounterReactor>();
     let tracker = use_gloc::<ClickTrackerReactor>();
 
-    let count = event_counter.state().count;
-    let label = event_counter.state().label.clone();
-
-    rsx! {
+    gloc_builder!(EventCounterReactor,
+        when: |_, new|  new.count != 3,
+        |state| rsx! {
         div { style: "display: flex; flex-direction: column; align-items: center; gap: 14px;",
 
-            p { style: "font-size: 64px; font-weight: 800; margin: 0; line-height: 1;", "{count}" }
-            span { style: "font-size: 12px; opacity: 0.45; font-weight: 600;", "{label}" }
+            p { style: "font-size: 64px; font-weight: 800; margin: 0; line-height: 1;",
+                "{state.count}"
+            }
+            span { style: "font-size: 12px; opacity: 0.45; font-weight: 600;",
+                "{state.label}"
+            }
 
-            CodeChip { text: "counter.update(|r| r.fire(CounterEvent::Increment))" }
+            CodeChip { text: "gloc_builder!(when: |old, new| old.count != new.count, ...)" }
 
             div { style: "display: flex; gap: 10px; flex-wrap: wrap; justify-content: center;",
                 ActionBtn {
@@ -333,49 +462,11 @@ fn DispatchView() -> Element {
                 }
             }
         }
-    }
+    })
 }
 
 // ---------------------------------------------------------------------------
-// Feature 3 — Mode B: generated state struct
-// ---------------------------------------------------------------------------
-
-#[component]
-fn ModeBView() -> Element {
-    let tracker = use_gloc::<ClickTrackerReactor>();
-
-    let total = tracker.state().total;
-    let last_action = tracker.state().last_action.clone();
-
-    rsx! {
-        div { style: "display: flex; flex-direction: column; gap: 12px;",
-
-            CodeChip { text: "#[state] pub total: u32" }
-
-            div { style: "display: flex; flex-direction: column; gap: 8px; font-size: 14px;",
-                div { style: "display: flex; justify-content: space-between; align-items: center;",
-                    span { style: "opacity: 0.5;", "Total clicks across app" }
-                    span { style: "font-weight: 800; font-size: 28px;", "{total}" }
-                }
-                div { style: "display: flex; justify-content: space-between; align-items: center;",
-                    span { style: "opacity: 0.5;", "Last action" }
-                    span {
-                        style: "font-weight: 600; font-size: 13px; opacity: 0.7; font-family: monospace;",
-                        if last_action.is_empty() { "—" } else { "{last_action}" }
-                    }
-                }
-            }
-
-            p {
-                style: "margin: 0; font-size: 11px; opacity: 0.30; text-align: center;",
-                "Counts every button press in the app"
-            }
-        }
-    }
-}
-
-// ---------------------------------------------------------------------------
-// Feature 4 — Enum state
+// Feature 4 — gloc_consumer! (ThemeReactor)
 // ---------------------------------------------------------------------------
 
 #[component]
@@ -383,43 +474,48 @@ fn EnumStateView() -> Element {
     let theme = use_gloc::<ThemeReactor>();
     let tracker = use_gloc::<ClickTrackerReactor>();
 
-    let is_dark = theme.state() == Theme::Dark;
-    let btn_label = theme.state().label().to_string();
-    let icon = if is_dark { "🌙" } else { "☀️" };
-    let mode_text = if is_dark { "Dark Mode" } else { "Light Mode" };
-
-    rsx! {
-        div { style: "display: flex; flex-direction: column; align-items: center; gap: 14px;",
-
-            CodeChip { text: "enum Theme {{ Light, Dark }}" }
-
-            div { style: "font-size: 52px; line-height: 1;", "{icon}" }
-            span { style: "font-size: 13px; font-weight: 700; opacity: 0.55;", "{mode_text}" }
-
-            button {
-                style: "
-                    padding: 10px 24px; border-radius: 10px; border: none;
-                    background: rgba(59,130,246,0.15); color: #3b82f6;
-                    font-size: 14px; font-weight: 700; cursor: pointer;
-                    width: 100%;
-                ",
-                onclick: move |_| {
-                    theme.update(|r| r.toggle());
-                    tracker.update(|r| r.record("theme toggle"));
-                },
-                "{btn_label}"
+    gloc_consumer!(ThemeReactor,
+        build_when:  |old, new| old != new,
+        build: |state| rsx! {
+            div { style: "display: flex; flex-direction: column; align-items: center; gap: 14px;",
+                CodeChip { text: "gloc_consumer!(build_when:, listen_when:, ...)" }
+                div { style: "font-size: 52px; line-height: 1;",
+                    { if *state == Theme::Dark { "🌙" } else { "☀️" } }
+                }
+                span { style: "font-size: 13px; font-weight: 700; opacity: 0.55;",
+                    { if *state == Theme::Dark { "Dark Mode" } else { "Light Mode" } }
+                }
+                button {
+                    style: "
+                        padding: 10px 24px; border-radius: 10px; border: none;
+                        background: rgba(59,130,246,0.15); color: #3b82f6;
+                        font-size: 14px; font-weight: 700; cursor: pointer; width: 100%;
+                    ",
+                    onclick: move |_| {
+                        theme.update(|r| r.toggle());
+                        tracker.update(|r| r.record("theme toggle"));
+                    },
+                    { state.label().to_string() }
+                }
             }
-        }
-    }
+        },
+        listen_when: |old, new| old != new,
+        listen: |old, new| { println!("[theme] {old:?} → {new:?}"); }
+    )
 }
 
 // ---------------------------------------------------------------------------
-// Feature 5 — Complex state (CartReactor, full width)
+// Feature 5 — CartReactor with gloc_listener!
 // ---------------------------------------------------------------------------
 
 #[component]
 fn CartView() -> Element {
     let cart = use_gloc::<CartReactor>();
+
+    gloc_listener!(CartReactor,
+        when: |old, new| !matches!(old.status, CartStatus::CheckedOut) && matches!(new.status, CartStatus::CheckedOut),
+        |_old, new| { println!("[cart] checked out — total: ${:.2}", new.total); }
+    );
 
     let items = cart.state().items.clone();
     let subtotal = cart.state().subtotal;
@@ -432,7 +528,7 @@ fn CartView() -> Element {
         div { style: "display: flex; flex-direction: column; gap: 14px;",
 
             div { style: "display: flex; align-items: center; gap: 10px; flex-wrap: wrap;",
-                CodeChip { text: "CartState: items, subtotal, discount, total, status" }
+                CodeChip { text: "gloc_listener!(CartReactor, |old, new| {{ ... }})" }
                 span {
                     style: "font-size: 12px; font-weight: 700; color: {status.color()};
                             background: {status.color()}22; padding: 3px 10px;
@@ -553,33 +649,71 @@ fn CartView() -> Element {
 }
 
 // ---------------------------------------------------------------------------
-// Shared micro-components
+// Shared components
 // ---------------------------------------------------------------------------
 
-/// Small monospace pill showing a code snippet — used as a feature hint.
+/// Section wrapper — badge chip + title + subtitle + content slot.
+#[component]
+fn FeatureSection(
+    badge: &'static str,
+    title: &'static str,
+    subtitle: &'static str,
+    card_bg: String,
+    children: Element,
+) -> Element {
+    rsx! {
+        div {
+            style: "
+                background: {card_bg};
+                border-radius: 16px;
+                padding: 20px 24px 24px;
+                box-shadow: 0 4px 20px rgba(0,0,0,0.10);
+                display: flex;
+                flex-direction: column;
+                gap: 16px;
+                transition: background 0.3s;
+            ",
+
+            div {
+                span {
+                    style: "
+                        display: inline-block;
+                        font-size: 10px; font-weight: 800;
+                        letter-spacing: 0.10em; text-transform: uppercase;
+                        background: rgba(59,130,246,0.15); color: #3b82f6;
+                        padding: 2px 8px; border-radius: 99px; margin-bottom: 6px;
+                    ",
+                    "{badge}"
+                }
+                p { style: "margin: 0; font-size: 15px; font-weight: 700;", "{title}" }
+                p {
+                    style: "margin: 2px 0 0; font-size: 11px; opacity: 0.40; font-family: monospace;",
+                    "{subtitle}"
+                }
+            }
+
+            { children }
+        }
+    }
+}
+
+/// Small monospace pill showing a code snippet.
 #[component]
 fn CodeChip(text: &'static str) -> Element {
     rsx! {
         span {
             style: "
-                display: inline-block;
-                font-family: monospace;
-                font-size: 11px;
-                background: rgba(128,128,128,0.12);
-                padding: 3px 9px;
-                border-radius: 6px;
-                opacity: 0.65;
-                white-space: nowrap;
-                overflow: hidden;
-                text-overflow: ellipsis;
-                max-width: 100%;
+                display: inline-block; font-family: monospace; font-size: 11px;
+                background: rgba(128,128,128,0.12); padding: 3px 9px;
+                border-radius: 6px; opacity: 0.65; white-space: nowrap;
+                overflow: hidden; text-overflow: ellipsis; max-width: 100%;
             ",
             "{text}"
         }
     }
 }
 
-/// Consistent coloured action button used for counter controls.
+/// Coloured action button used for counter controls.
 #[component]
 fn ActionBtn(color: &'static str, onclick: EventHandler<MouseEvent>, children: Element) -> Element {
     rsx! {

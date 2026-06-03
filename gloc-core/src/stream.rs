@@ -1,65 +1,122 @@
-//! [`GlocStream`] — the reactive core of GLOC.
+//! [`GlocStream`] — the reactive core of GLoC.
 //!
-//! A `GlocStream` is a shared, observable state container. It holds the
-//! current state and notifies all registered listeners synchronously
-//! whenever the state transitions to a new value.
-//!
-//! Built entirely on `std` — no third-party runtime or async dependencies.
-//! `Arc<Mutex<_>>` provides thread-safe shared ownership so multiple
-//! [`GlocSubscription`]s and [`GlocProvider`](crate::provider::GlocProvider)s
-//! can all observe the same stream independently.
+//! A `GlocStream` broadcasts every real state transition to all registered
+//! listeners synchronously. It supports fan-out (unlimited subscribers),
+//! listener cancellation via [`ListenerHandle`], and a close signal that
+//! fires when the owning reactor shuts down.
 //!
 //! # Design
 //!
 //! ```text
 //! GlocStream<S>
 //!   └── Arc<SharedState<S>>
-//!         ├── current:   Mutex<S>                         — latest state
-//!         └── listeners: Mutex<Vec<Box<dyn Fn(&S, &S)>>>  — old → new callbacks
+//!         ├── current:        Mutex<S>
+//!         ├── listeners:      Mutex<BTreeMap<u64, Listener<S>>>
+//!         ├── close_listeners: Mutex<BTreeMap<u64, CloseListener>>
+//!         ├── next_id:        AtomicU64
+//!         └── closed:         AtomicBool
 //!
 //! emit_transition(old, new)
-//!   → update current
-//!   → call every listener with (&old, &new)
-//! ```
+//!   1. update current  (current lock → released)
+//!   2. snapshot listeners  (listeners lock → released)
+//!   3. call each listener  (no lock held)
 //!
-//! # Example
-//!
-//! ```rust
-//! use gloc_core::stream::GlocStream;
-//!
-//! let stream = GlocStream::new(0_i32);
-//!
-//! stream.listen(|old, new| println!("{old} → {new}"));
-//!
-//! stream.emit_transition(&0, &1);  // prints: 0 → 1
-//! assert_eq!(stream.state(), 1);
+//! close()
+//!   1. set closed = true
+//!   2. snapshot close_listeners  (lock → released)
+//!   3. call each close_listener  (no lock held)
+//!   4. clear all listeners
 //! ```
 
-use std::sync::{Arc, Mutex};
+use std::collections::BTreeMap;
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::{Arc, Mutex, Weak};
 
 use crate::state::State;
 
-/// Type alias for a heap-allocated state transition listener.
-type Listener<S> = Box<dyn Fn(&S, &S) + Send + 'static>;
+type Listener<S> = Arc<dyn Fn(&S, &S) + Send + Sync + 'static>;
+type CloseListener = Arc<dyn Fn() + Send + Sync + 'static>;
 
 // ---------------------------------------------------------------------------
 // Internal shared state
 // ---------------------------------------------------------------------------
 
-/// Heap-allocated shared state behind every `GlocStream`.
-///
-/// Wrapped in `Arc` so the stream and all its subscriptions / consumers
-/// point to the same allocation — no copying, no coordination overhead.
 struct SharedState<S: State> {
-    /// The most recently emitted state value.
     current: Mutex<S>,
-
-    /// Registered transition listeners.
-    ///
-    /// Each listener receives `(&old_state, &new_state)` synchronously
-    /// inside [`GlocStream::emit_transition`].
-    listeners: Mutex<Vec<Listener<S>>>,
+    listeners: Mutex<BTreeMap<u64, Listener<S>>>,
+    close_listeners: Mutex<BTreeMap<u64, CloseListener>>,
+    next_id: AtomicU64,
+    closed: AtomicBool,
 }
+
+// ---------------------------------------------------------------------------
+// ListenerHandle
+// ---------------------------------------------------------------------------
+
+/// A cancellable handle returned by [`GlocStream::listen`] and
+/// [`GlocStream::on_close`].
+///
+/// When this handle is **dropped**, the associated listener is automatically
+/// removed from the stream — no explicit cancel call needed. This is the RAII
+/// pattern: store the handle for as long as you want the listener active.
+///
+/// Call [`forget`](Self::forget) to keep the listener active permanently
+/// even after the handle goes out of scope.
+///
+/// # Example
+///
+/// ```rust
+/// use gloc_core::stream::GlocStream;
+///
+/// let stream = GlocStream::new(0_i32);
+///
+/// {
+///     let _handle = stream.listen(|_, new| println!("saw {new}"));
+///     stream.emit_transition(&0, &1);  // prints: saw 1
+/// } // handle dropped → listener cancelled
+///
+/// stream.emit_transition(&1, &2);  // no output — listener is gone
+/// assert_eq!(stream.state(), 2);
+/// ```
+pub struct ListenerHandle {
+    cancel: Option<Arc<dyn Fn() + Send + Sync + 'static>>,
+}
+
+impl ListenerHandle {
+    /// Explicitly cancel the listener now.
+    pub fn cancel(&mut self) {
+        if let Some(f) = self.cancel.take() {
+            f();
+        }
+    }
+
+    /// Detach from RAII — the listener stays active even after this handle
+    /// is dropped.
+    pub fn forget(mut self) {
+        self.cancel = None;
+    }
+}
+
+impl Clone for ListenerHandle {
+    /// Clones the handle — both the original and the clone share the same
+    /// cancel function (via `Arc`). The listener is cancelled when the
+    /// **first** clone is dropped (subsequent cancels are no-ops).
+    fn clone(&self) -> Self {
+        Self {
+            cancel: self.cancel.clone(),
+        }
+    }
+}
+
+impl Drop for ListenerHandle {
+    fn drop(&mut self) {
+        self.cancel();
+    }
+}
+
+// SAFETY: `Arc<dyn Fn() + Send + Sync>` is Send + Sync.
+unsafe impl Send for ListenerHandle {}
+unsafe impl Sync for ListenerHandle {}
 
 // ---------------------------------------------------------------------------
 // GlocStream
@@ -67,49 +124,62 @@ struct SharedState<S: State> {
 
 /// A shared, observable stream of state transitions.
 ///
-/// `GlocStream<S>` is the reactive backbone injected into every cubit by the
-/// `#[cubit]` macro. It replaces the previous `Vec<Box<dyn Fn>>` listener
-/// list with a proper, cloneable, multi-subscriber reactive primitive.
+/// Every `#[reactor]`-generated reactor carries one built-in `GlocStream`.
+/// Adapters, UI components, and other reactors subscribe to it via
+/// [`listen`](Self::listen). Each subscriber gets `(&old, &new)` on every
+/// real state transition.
+///
+/// # Fan-out
+///
+/// Any number of listeners can be registered — they all fire on every
+/// `emit_transition` call.
+///
+/// # Cancellation
+///
+/// [`listen`] returns a [`ListenerHandle`]. Dropping the handle cancels the
+/// listener automatically (RAII). Call [`ListenerHandle::forget`] to keep
+/// the listener alive permanently.
+///
+/// # Close signal
+///
+/// [`on_close`](Self::on_close) registers a callback that fires once when
+/// the stream is closed via [`close`](Self::close). Useful for reactor-to-reactor
+/// subscriptions where the subscribing reactor needs to clean up when the
+/// source reactor shuts down.
 ///
 /// # Thread safety
 ///
-/// `GlocStream<S>` is `Send + Sync` when `S: Send`. Multiple threads can
-/// hold clones of the same stream and register listeners independently.
-///
-/// # Clone behaviour
-///
-/// Cloning a `GlocStream` is cheap — it increments the `Arc` reference
-/// count. All clones share the same underlying state and listener list.
-///
-/// # Example
-///
-/// ```rust
-/// use gloc_core::stream::GlocStream;
-///
-/// let stream = GlocStream::new(String::from("idle"));
-///
-/// // Register a listener — receives old and new state on every transition
-/// stream.listen(|old, new| {
-///     println!("transition: {old:?} → {new:?}");
-/// });
-///
-/// stream.emit_transition(&"idle".to_string(), &"loading".to_string());
-/// // prints: transition: "idle" → "loading"
-///
-/// assert_eq!(stream.state(), "loading");
-/// ```
+/// `GlocStream<S>` is `Send + Sync` when `S: Send`. Cloning is free — all
+/// clones share the same `Arc<SharedState<S>>`.
 #[derive(Clone)]
 pub struct GlocStream<S: State> {
     inner: Arc<SharedState<S>>,
 }
 
-impl<S: State + Send> GlocStream<S> {
-    /// Creates a new `GlocStream` with the given `initial` state.
+impl<S: State + Send + 'static> GlocStream<S> {
+    /// Creates a new `GlocStream` initialised with `initial`.
     ///
-    /// # Parameters
+    /// # Example
     ///
-    /// - `initial` — the starting state. The stream holds this value until
-    ///   the first call to [`emit_transition`](Self::emit_transition).
+    /// ```rust
+    /// use gloc_core::stream::GlocStream;
+    ///
+    /// let stream = GlocStream::new(0_i32);
+    /// assert_eq!(stream.state(), 0);
+    /// ```
+    pub fn new(initial: S) -> Self {
+        Self {
+            inner: Arc::new(SharedState {
+                current: Mutex::new(initial),
+                listeners: Mutex::new(BTreeMap::new()),
+                close_listeners: Mutex::new(BTreeMap::new()),
+                next_id: AtomicU64::new(0),
+                closed: AtomicBool::new(false),
+            }),
+        }
+    }
+
+    /// Returns a clone of the current state.
     ///
     /// # Example
     ///
@@ -119,47 +189,23 @@ impl<S: State + Send> GlocStream<S> {
     /// let stream = GlocStream::new(42_i32);
     /// assert_eq!(stream.state(), 42);
     /// ```
-    pub fn new(initial: S) -> Self {
-        Self {
-            inner: Arc::new(SharedState {
-                current: Mutex::new(initial),
-                listeners: Mutex::new(Vec::new()),
-            }),
-        }
-    }
-
-    /// Returns a clone of the current state.
-    ///
-    /// Because `GlocStream` is shared across threads, the state is stored
-    /// behind a `Mutex`. This method acquires the lock, clones the value,
-    /// and releases the lock — the returned value is fully owned by the caller.
-    ///
-    /// # Example
-    ///
-    /// ```rust
-    /// use gloc_core::stream::GlocStream;
-    ///
-    /// let stream = GlocStream::new(10_i32);
-    /// assert_eq!(stream.state(), 10);
-    /// ```
     pub fn state(&self) -> S {
         self.inner.current.lock().unwrap().clone()
     }
 
-    /// Transitions to `next`, updates `current`, and notifies all listeners.
+    /// Returns `true` if [`close`](Self::close) has been called.
+    pub fn is_closed(&self) -> bool {
+        self.inner.closed.load(Ordering::Acquire)
+    }
+
+    /// Updates `current` to `next` and notifies all registered listeners.
     ///
-    /// This is called by the cubit's generated `emit()` method **after**
-    /// change-detection has already confirmed `next != old`. The old value
-    /// is passed in so listeners can observe both sides of the transition.
+    /// Does nothing if the stream is already closed.
     ///
-    /// Listeners are called synchronously, in registration order, while the
-    /// state lock is **not** held — so listeners can safely call `stream.state()`
-    /// without deadlocking.
-    ///
-    /// # Parameters
-    ///
-    /// - `old`  — the state before this transition
-    /// - `next` — the state after this transition (already stored as current)
+    /// Both the `current` lock and the `listeners` lock are fully released
+    /// before any listener fires — so listeners can safely call
+    /// [`listen`](Self::listen), [`state`](Self::state), or
+    /// [`on_close`](Self::on_close) without deadlocking.
     ///
     /// # Example
     ///
@@ -172,29 +218,33 @@ impl<S: State + Send> GlocStream<S> {
     /// assert_eq!(stream.state(), 1);
     /// ```
     pub fn emit_transition(&self, old: &S, next: &S) {
-        // Update current state first.
+        if self.inner.closed.load(Ordering::Acquire) {
+            return;
+        }
+
+        // 1. Update current — lock acquired and released immediately.
         *self.inner.current.lock().unwrap() = next.clone();
 
-        // Collect listeners snapshot — release the lock before calling them
-        // so listeners can safely read stream.state() without deadlocking.
-        let listeners = self.inner.listeners.lock().unwrap();
-        for listener in listeners.iter() {
+        // 2. Snapshot listeners — lock released before calling any of them.
+        let snapshot: Vec<Listener<S>> = self
+            .inner
+            .listeners
+            .lock()
+            .unwrap()
+            .values()
+            .cloned()
+            .collect();
+
+        // 3. Call every listener with no lock held.
+        for listener in &snapshot {
             listener(old, next);
         }
     }
 
     /// Registers a listener that fires on every state transition.
     ///
-    /// The listener receives `(&old_state, &new_state)` — both sides of the
-    /// transition — so callers can implement logic like "navigate only if we
-    /// moved from Loading to Success".
-    ///
-    /// Listeners are called synchronously inside [`emit_transition`](Self::emit_transition),
-    /// in registration order. They must not block.
-    ///
-    /// # Parameters
-    ///
-    /// - `f` — a closure or function that accepts `(&S, &S)` and is `Send + 'static`
+    /// Returns a [`ListenerHandle`] — drop it to cancel the listener
+    /// automatically, or call [`ListenerHandle::forget`] to make it permanent.
     ///
     /// # Example
     ///
@@ -203,39 +253,114 @@ impl<S: State + Send> GlocStream<S> {
     /// use std::sync::{Arc, Mutex};
     ///
     /// let stream = GlocStream::new(0_i32);
-    /// let log: Arc<Mutex<Vec<(i32, i32)>>> = Arc::new(Mutex::new(vec![]));
-    /// let log_clone = log.clone();
+    /// let log: Arc<Mutex<Vec<i32>>> = Arc::new(Mutex::new(vec![]));
+    /// let log2 = log.clone();
     ///
-    /// stream.listen(move |old, new| {
-    ///     log_clone.lock().unwrap().push((*old, *new));
-    /// });
+    /// let handle = stream.listen(move |_, new| log2.lock().unwrap().push(*new));
     ///
     /// stream.emit_transition(&0, &1);
     /// stream.emit_transition(&1, &2);
+    /// assert_eq!(*log.lock().unwrap(), vec![1, 2]);
     ///
-    /// assert_eq!(*log.lock().unwrap(), vec![(0, 1), (1, 2)]);
+    /// handle.forget();  // keep listening permanently
     /// ```
-    pub fn listen(&self, f: impl Fn(&S, &S) + Send + 'static) {
-        self.inner.listeners.lock().unwrap().push(Box::new(f));
+    pub fn listen(&self, f: impl Fn(&S, &S) + Send + Sync + 'static) -> ListenerHandle {
+        let id = self.inner.next_id.fetch_add(1, Ordering::Relaxed);
+        self.inner.listeners.lock().unwrap().insert(id, Arc::new(f));
+
+        let inner: Weak<SharedState<S>> = Arc::downgrade(&self.inner);
+        ListenerHandle {
+            cancel: Some(Arc::new(move || {
+                if let Some(inner) = inner.upgrade() {
+                    inner.listeners.lock().unwrap().remove(&id);
+                }
+            })),
+        }
     }
 
-    /// Returns a [`GlocSubscription`] that holds a shared reference to this stream.
+    /// Registers a callback that fires **once** when this stream is closed.
     ///
-    /// A subscription is a lightweight handle — cloning it is free (just an
-    /// `Arc` increment). Use it to pass read access to this stream into
-    /// framework adapters or background tasks without giving them write access.
+    /// Use this for reactor-to-reactor subscriptions — when reactor A subscribes
+    /// to reactor B's stream, A can register an `on_close` callback to clean up
+    /// when B shuts down.
+    ///
+    /// Returns a [`ListenerHandle`] — drop it to cancel the close callback
+    /// before it fires.
     ///
     /// # Example
     ///
     /// ```rust
     /// use gloc_core::stream::GlocStream;
+    /// use std::sync::{Arc, Mutex};
     ///
     /// let stream = GlocStream::new(0_i32);
-    /// let sub = stream.subscribe();
+    /// let closed = Arc::new(Mutex::new(false));
+    /// let closed2 = closed.clone();
     ///
-    /// stream.emit_transition(&0, &5);
-    /// assert_eq!(sub.state(), 5);  // subscription sees the update
+    /// let handle = stream.on_close(move || { *closed2.lock().unwrap() = true; });
+    ///
+    /// assert!(!*closed.lock().unwrap());
+    /// stream.close();
+    /// assert!(*closed.lock().unwrap());
+    ///
+    /// handle.forget();
     /// ```
+    pub fn on_close(&self, f: impl Fn() + Send + Sync + 'static) -> ListenerHandle {
+        // If already closed, fire immediately and return a no-op handle.
+        if self.inner.closed.load(Ordering::Acquire) {
+            f();
+            return ListenerHandle { cancel: None };
+        }
+
+        let id = self.inner.next_id.fetch_add(1, Ordering::Relaxed);
+        self.inner
+            .close_listeners
+            .lock()
+            .unwrap()
+            .insert(id, Arc::new(f));
+
+        let inner: Weak<SharedState<S>> = Arc::downgrade(&self.inner);
+        ListenerHandle {
+            cancel: Some(Arc::new(move || {
+                if let Some(inner) = inner.upgrade() {
+                    inner.close_listeners.lock().unwrap().remove(&id);
+                }
+            })),
+        }
+    }
+
+    /// Closes the stream — fires all close listeners, then clears all
+    /// transition listeners.
+    ///
+    /// After closing:
+    /// - [`emit_transition`](Self::emit_transition) is a no-op.
+    /// - [`is_closed`](Self::is_closed) returns `true`.
+    /// - Any new [`on_close`](Self::on_close) callback fires immediately.
+    ///
+    /// Called automatically by [`GlocProvider::close`](crate::provider::GlocProvider::close)
+    /// when a reactor shuts down.
+    pub fn close(&self) {
+        // Mark closed first — subsequent emit_transition calls are no-ops.
+        self.inner.closed.store(true, Ordering::Release);
+
+        // Snapshot and clear close listeners.
+        let close_snapshot: Vec<CloseListener> = {
+            let mut guard = self.inner.close_listeners.lock().unwrap();
+            let snap = guard.values().cloned().collect();
+            guard.clear();
+            snap
+        };
+
+        // Fire close callbacks with no lock held.
+        for f in &close_snapshot {
+            f();
+        }
+
+        // Clear transition listeners — stream is done.
+        self.inner.listeners.lock().unwrap().clear();
+    }
+
+    /// Returns a [`GlocSubscription`] — a read-only handle to this stream.
     pub fn subscribe(&self) -> GlocSubscription<S> {
         GlocSubscription {
             inner: Arc::clone(&self.inner),
@@ -249,12 +374,8 @@ impl<S: State + Send> GlocStream<S> {
 
 /// A read-only handle to a [`GlocStream`].
 ///
-/// A subscription is returned by [`GlocStream::subscribe`] and gives the
-/// holder read access to the current state and the ability to register
-/// additional listeners — without the ability to emit new transitions.
-///
-/// Cloning a `GlocSubscription` is free — it only increments the `Arc`
-/// reference count on the shared inner state.
+/// Returned by [`GlocStream::subscribe`]. Gives the holder read access and
+/// the ability to register listeners, without the ability to emit transitions.
 ///
 /// # Example
 ///
@@ -263,39 +384,58 @@ impl<S: State + Send> GlocStream<S> {
 ///
 /// let stream = GlocStream::new(false);
 /// let sub1 = stream.subscribe();
-/// let sub2 = stream.subscribe();  // second independent subscriber
+/// let sub2 = stream.subscribe();
 ///
 /// stream.emit_transition(&false, &true);
-///
 /// assert_eq!(sub1.state(), true);
-/// assert_eq!(sub2.state(), true);  // both see the same state
+/// assert_eq!(sub2.state(), true);
 /// ```
 #[derive(Clone)]
 pub struct GlocSubscription<S: State> {
     inner: Arc<SharedState<S>>,
 }
 
-impl<S: State + Send> GlocSubscription<S> {
-    /// Returns a clone of the current state seen by this subscription.
-    ///
-    /// # Example
-    ///
-    /// ```rust
-    /// use gloc_core::stream::GlocStream;
-    ///
-    /// let stream = GlocStream::new(99_i32);
-    /// let sub = stream.subscribe();
-    /// assert_eq!(sub.state(), 99);
-    /// ```
+impl<S: State + Send + 'static> GlocSubscription<S> {
+    /// Returns a clone of the current state.
     pub fn state(&self) -> S {
         self.inner.current.lock().unwrap().clone()
     }
 
-    /// Registers a listener on the underlying stream.
-    ///
-    /// Equivalent to calling [`GlocStream::listen`] — the listener is shared
-    /// with the original stream and all other subscriptions.
-    pub fn listen(&self, f: impl Fn(&S, &S) + Send + 'static) {
-        self.inner.listeners.lock().unwrap().push(Box::new(f));
+    /// Registers a listener. Returns a [`ListenerHandle`] for cancellation.
+    pub fn listen(&self, f: impl Fn(&S, &S) + Send + Sync + 'static) -> ListenerHandle {
+        let id = self.inner.next_id.fetch_add(1, Ordering::Relaxed);
+        self.inner.listeners.lock().unwrap().insert(id, Arc::new(f));
+
+        let inner: Weak<SharedState<S>> = Arc::downgrade(&self.inner);
+        ListenerHandle {
+            cancel: Some(Arc::new(move || {
+                if let Some(inner) = inner.upgrade() {
+                    inner.listeners.lock().unwrap().remove(&id);
+                }
+            })),
+        }
+    }
+
+    /// Registers a close callback. Returns a [`ListenerHandle`] for cancellation.
+    pub fn on_close(&self, f: impl Fn() + Send + Sync + 'static) -> ListenerHandle {
+        if self.inner.closed.load(Ordering::Acquire) {
+            f();
+            return ListenerHandle { cancel: None };
+        }
+        let id = self.inner.next_id.fetch_add(1, Ordering::Relaxed);
+        self.inner
+            .close_listeners
+            .lock()
+            .unwrap()
+            .insert(id, Arc::new(f));
+
+        let inner: Weak<SharedState<S>> = Arc::downgrade(&self.inner);
+        ListenerHandle {
+            cancel: Some(Arc::new(move || {
+                if let Some(inner) = inner.upgrade() {
+                    inner.close_listeners.lock().unwrap().remove(&id);
+                }
+            })),
+        }
     }
 }

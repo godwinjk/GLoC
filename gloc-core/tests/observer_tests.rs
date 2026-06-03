@@ -20,11 +20,16 @@ struct S(i32);
 
 struct R {
     state: S,
+    stream: GlocStream<S>,
 }
 
 impl R {
     fn new(v: i32) -> Self {
-        Self { state: S(v) }
+        let state = S(v);
+        Self {
+            stream: GlocStream::new(state.clone()),
+            state,
+        }
     }
 
     fn inc(&mut self) {
@@ -41,16 +46,27 @@ impl Reactor for R {
 
     fn emit(&mut self, next: S) {
         if next != self.state {
-            self.state = next;
+            let old = self.state.clone();
+            self.state = next.clone();
+            self.stream.emit_transition(&old, &next);
+            if let Some(obs) = gloc_core::observer() {
+                obs.on_transition(
+                    std::any::type_name::<Self>(),
+                    &format!("{old:?}"),
+                    &format!("{next:?}"),
+                );
+            }
         }
+    }
+
+    fn stream(&self) -> GlocStream<S> {
+        self.stream.clone()
     }
 }
 
-/// Builds a `GlocProvider<R>` directly — no Provider needed.
 fn make_consumer(initial: i32) -> GlocProvider<R> {
     let reactor = Arc::new(Mutex::new(R::new(initial)));
-    let stream = GlocStream::new(S(initial));
-    GlocProvider::new(reactor, stream)
+    GlocProvider::new(reactor)
 }
 
 // ---------------------------------------------------------------------------
