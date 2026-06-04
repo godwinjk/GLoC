@@ -41,13 +41,13 @@ export class ReactorDialog {
   }
 
   private handleValidate(name: string): void {
-    const filePath = path.join(this.folderUri.fsPath, `${name}.rs`);
+    const filePath = path.join(this.folderUri.fsPath, `${toSnakeCase(name)}.rs`);
     const exists = fs.existsSync(filePath);
     this.panel?.webview.postMessage({ type: 'validationResult', exists });
   }
 
   private async handleCreate(name: string, withNeutrons: boolean): Promise<void> {
-    const filePath = path.join(this.folderUri.fsPath, `${name}.rs`);
+    const filePath = path.join(this.folderUri.fsPath, `${toSnakeCase(name)}.rs`);
     const content = generateContent(name, withNeutrons);
     try {
       fs.writeFileSync(filePath, content, 'utf-8');
@@ -367,6 +367,13 @@ export class ReactorDialog {
 </body>
 </html>`;
   }
+}
+
+function toSnakeCase(name: string): string {
+  return name
+    .replace(/([A-Z])/g, '_$1')
+    .toLowerCase()
+    .replace(/^_/, '');
 }
 
 function generateContent(name: string, withNeutrons: boolean): string {

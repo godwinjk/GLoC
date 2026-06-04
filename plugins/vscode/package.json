@@ -14,7 +14,7 @@
     "commands": [
       {
         "command": "gloc.newReactor",
-        "title": "New GLoC Reactor"
+        "title": "New Reactor"
       }
     ],
     "menus": {
