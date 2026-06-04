@@ -3,12 +3,21 @@
   "displayName": "GLoC Reactor Generator",
   "description": "Generate GLoC reactor files from the Explorer context menu",
   "version": "0.1.0",
-  "publisher": "gloc",
+  "publisher": "GodwinJoseph",
+  "icon": "media/gloc_icon.png",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/godwinjk/GLoC.git",
+    "directory": "plugins/vscode"
+  },
   "engines": {
     "vscode": "^1.85.0"
   },
-  "categories": ["Other"],
-  "activationEvents": ["onCommand:gloc.newReactor"],
+  "categories": [
+    "Other"
+  ],
+
   "main": "./out/extension.js",
   "contributes": {
     "commands": [
@@ -30,11 +39,15 @@
   "scripts": {
     "compile": "tsc -p ./",
     "watch": "tsc -watch -p ./",
-    "vscode:prepublish": "npm run compile"
+    "vscode:prepublish": "npm run compile",
+    "package": "vsce package",
+    "publish": "vsce publish"
   },
   "devDependencies": {
-    "@types/vscode": "^1.85.0",
     "@types/node": "^18.0.0",
+    "@types/vscode": "^1.85.0",
+    "@vscode/vsce": "^3.9.2",
+    "ovsx": "^1.0.0",
     "typescript": "^5.3.0"
   }
 }
