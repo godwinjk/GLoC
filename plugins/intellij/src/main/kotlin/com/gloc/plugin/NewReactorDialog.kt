@@ -12,6 +12,7 @@ import com.intellij.ui.dsl.builder.bind
 import com.intellij.ui.dsl.builder.bindText
 import com.intellij.ui.dsl.builder.panel
 import javax.swing.JComponent
+import javax.swing.ScrollPaneConstants
 
 /// Dialog for creating a new GLoC reactor file using JetBrains UI DSL.
 class NewReactorDialog(
@@ -30,6 +31,10 @@ class NewReactorDialog(
         false,
     ).apply {
         preferredSize = java.awt.Dimension(600, 380)
+        addSettingsProvider { editor ->
+            editor.scrollPane.verticalScrollBarPolicy = ScrollPaneConstants.VERTICAL_SCROLLBAR_AS_NEEDED
+            editor.scrollPane.horizontalScrollBarPolicy = ScrollPaneConstants.HORIZONTAL_SCROLLBAR_AS_NEEDED
+        }
     }
 
     val reactorName: String get() = name

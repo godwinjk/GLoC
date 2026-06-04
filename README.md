@@ -15,6 +15,9 @@ A universal business logic architecture for Rust.
 [![Crates.io](https://img.shields.io/crates/v/gloc.svg)](https://crates.io/crates/gloc)
 [![Docs.rs](https://docs.rs/gloc/badge.svg)](https://docs.rs/gloc)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](#license)
+[![VS Code](https://img.shields.io/visual-studio-marketplace/v/godwinjoseph.gloc-vscode.svg?label=VS%20Code)](https://marketplace.visualstudio.com/items?itemName=godwinjoseph.gloc-vscode)
+[![Open VSX](https://img.shields.io/open-vsx/v/GodwinJoseph/gloc-vscode.svg?label=Open%20VSX)](https://open-vsx.org/extension/GodwinJoseph/gloc-vscode)
+[![JetBrains](https://img.shields.io/jetbrains/plugin/v/32105.svg?label=JetBrains)](https://plugins.jetbrains.com/plugin/32105-gloc-reactor-generator)
 
 </div>
 
@@ -49,6 +52,7 @@ broadcasts every real transition to all subscribers automatically.
 
 - [Concepts](#concepts)
 - [Installation](#installation)
+- [Ecosystem](#ecosystem)
 - [Quick Start](#quick-start)
   - [Reactor — direct methods](#reactor--direct-methods)
   - [Reactor — event-driven dispatch](#reactor--event-driven-dispatch)
@@ -146,17 +150,19 @@ no-op — no stream notification, no re-render.
 
 ## Installation
 
+> **Note:** GLoC has not yet been published to crates.io. Add it as a git dependency for now:
+
 ```toml
 [dependencies]
-gloc = "0.3"
+gloc = { git = "https://github.com/godwinjk/gloc" }
 ```
 
 For Dioxus desktop:
 
 ```toml
 [dependencies]
-gloc        = "0.3"
-gloc-dioxus = "0.3"
+gloc        = { git = "https://github.com/godwinjk/gloc" }
+gloc-dioxus = { git = "https://github.com/godwinjk/gloc" }
 dioxus      = { version = "0.7", features = ["desktop"] }
 ```
 
@@ -164,9 +170,20 @@ With tracing:
 
 ```toml
 [dependencies]
-gloc    = { version = "0.3", features = ["tracing"] }
+gloc    = { git = "https://github.com/godwinjk/gloc", features = ["tracing"] }
 tracing = "0.1"
 ```
+
+---
+
+## Ecosystem
+
+Official IDE plugins for GLoC — generate reactors, states, and events without boilerplate.
+
+| Plugin | Install |
+|--------|---------|
+| **GLoC for VS Code** — snippets and reactor scaffolding for VS Code and VS Code-compatible editors | [![VS Code](https://img.shields.io/visual-studio-marketplace/v/godwinjoseph.gloc-vscode.svg?label=Marketplace)](https://marketplace.visualstudio.com/items?itemName=godwinjoseph.gloc-vscode) [![Open VSX](https://img.shields.io/open-vsx/v/GodwinJoseph/gloc-vscode.svg?label=Open%20VSX)](https://open-vsx.org/extension/GodwinJoseph/gloc-vscode) |
+| **GLoC Reactor Generator for IntelliJ** — reactor and state generation for IntelliJ IDEA, CLion, and RustRover | [![JetBrains](https://img.shields.io/jetbrains/plugin/v/32105.svg?label=JetBrains%20Marketplace)](https://plugins.jetbrains.com/plugin/32105-gloc-reactor-generator) |
 
 ---
 
@@ -591,6 +608,6 @@ Licensed under the [MIT License](LICENSE-MIT).
 
 Built with Rust 🦀 — designed for everyone.
 
-[crates.io/crates/gloc](https://crates.io/crates/gloc) · [docs.rs/gloc](https://docs.rs/gloc)
+[github.com/godwinjk/gloc](https://github.com/godwinjk/gloc) · [crates.io/crates/gloc](https://crates.io/crates/gloc) · [docs.rs/gloc](https://docs.rs/gloc)
 
 </div>
