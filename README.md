@@ -9,8 +9,9 @@ One pattern. Universal. Everywhere Rust runs._
 
 A universal business logic architecture for Rust.
 
-[![CI — PR](https://github.com/godwinjk/gloc/actions/workflows/pr.yml/badge.svg)](https://github.com/godwinjk/gloc/actions/workflows/pr.yml)
 [![CI — Main](https://github.com/godwinjk/gloc/actions/workflows/main.yml/badge.svg)](https://github.com/godwinjk/gloc/actions/workflows/main.yml)
+[![CI — PR](https://github.com/godwinjk/gloc/actions/workflows/pr.yml/badge.svg)](https://github.com/godwinjk/gloc/actions/workflows/pr.yml)
+[![CI — Publish](https://github.com/godwinjk/gloc/actions/workflows/publish.yml/badge.svg)](https://github.com/godwinjk/gloc/actions/workflows/publish.yml)
 [![Crates.io](https://img.shields.io/crates/v/gloc.svg)](https://crates.io/crates/gloc)
 [![Docs.rs](https://docs.rs/gloc/badge.svg)](https://docs.rs/gloc)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](#license)
