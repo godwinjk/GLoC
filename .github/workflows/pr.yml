@@ -16,6 +16,11 @@ on:
   pull_request:
     branches:
       - main
+    paths-ignore:
+      - 'plugins/**'
+      - 'docs/**'
+      - 'asset/**'
+      - '*.md'
 
 # Cancel in-progress runs for the same PR branch when a new commit is pushed.
 concurrency:

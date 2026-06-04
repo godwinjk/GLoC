@@ -15,6 +15,11 @@ on:
   push:
     branches:
       - main
+    paths-ignore:
+      - 'plugins/**'
+      - 'docs/**'
+      - 'asset/**'
+      - '*.md'
 
 env:
   CARGO_TERM_COLOR: always
