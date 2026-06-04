@@ -40,6 +40,8 @@ GLOC_ROADMAP.md
 *.iml
 *.ipr
 *.iws
+.intellijPlatform/
+.kotlin/
 
 # -----------------------------------------------------------------------------
 # IDEs — VS Code

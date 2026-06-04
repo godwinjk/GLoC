@@ -1,11 +1,14 @@
 package com.gloc.plugin
 
+import com.intellij.openapi.actionSystem.ActionUpdateThread
 import com.intellij.openapi.actionSystem.AnAction
 import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.actionSystem.CommonDataKeys
 
 /// Right-click action that opens the New GLoC Reactor dialog.
 class GlocNewReactorAction : AnAction() {
+
+    override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.BGT
 
     override fun actionPerformed(e: AnActionEvent) {
         val project = e.project ?: return
@@ -14,7 +17,7 @@ class GlocNewReactorAction : AnAction() {
 
         val dialog = NewReactorDialog(project, targetDir)
         if (dialog.showAndGet()) {
-            ReactorGenerator.createFile(project, targetDir, dialog.reactorName, dialog.withNeutrons)
+            ReactorGenerator.createFile(project, targetDir, dialog.reactorName, dialog.includeNeutrons)
         }
     }
 

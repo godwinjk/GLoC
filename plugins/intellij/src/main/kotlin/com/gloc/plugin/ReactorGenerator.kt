@@ -28,7 +28,9 @@ impl Default for ${name}State {
 
 #[derive(Debug)]
 pub enum ${name}Neutron {
-    // TODO: add neutron variants
+    // TODO: add variants, e.g.:
+    // Increment,
+    // Reset,
 }
 
 #[reactor(state = ${name}State, neutrons = ${name}Neutron)]
@@ -37,7 +39,8 @@ pub struct ${name}Reactor {}
 impl ${name}Reactor {
     fn on_event(&mut self, neutron: ${name}Neutron) {
         match neutron {
-            // TODO: handle neutron variants
+            // TODO: handle each variant, e.g.:
+            // ${name}Neutron::Increment => self.emit(${name}State { /* .. */ }),
         }
     }
 }
@@ -66,11 +69,17 @@ impl ${name}Reactor {
         }
     }
 
+    /// Converts PascalCase reactor name to a snake_case Rust file name (e.g. CartItem → cart_item).
+    fun toFileName(name: String): String =
+        name.replace(Regex("([a-z])([A-Z])"), "$1_$2")
+            .replace(Regex("([A-Z]+)([A-Z][a-z])"), "$1_$2")
+            .lowercase()
+
     /// Creates the reactor file in [dir] and opens it in the editor.
     fun createFile(project: Project, dir: VirtualFile, name: String, withNeutrons: Boolean) {
         WriteCommandAction.runWriteCommandAction(project) {
             try {
-                val file = dir.createChildData(this, "$name.rs")
+                val file = dir.createChildData(this, "${toFileName(name)}.rs")
                 VfsUtil.saveText(file, generateContent(name, withNeutrons))
                 FileEditorManager.getInstance(project).openFile(file, true)
             } catch (ex: Exception) {

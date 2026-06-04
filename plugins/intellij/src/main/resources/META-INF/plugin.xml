@@ -1,26 +1,22 @@
 <idea-plugin>
   <id>com.gloc.plugin</id>
-  <name>GLoC Reactor Generator</name>
-  <version>0.1.0</version>
-  <vendor email="godwinjoseph.k@gmail.com" url="https://github.com/godwinjk/gloc">GLoC</vendor>
+  <vendor email="godwinjose.k@gmail.com" url="https://github.com/godwinjk/GLoC">Godwin Joseph</vendor>
 
-  <description><![CDATA[
-    Generate GLoC reactor files from the Project view context menu.<br><br>
-    Right-click any directory in the Project view and choose <b>New → GLoC Reactor</b>
-    to open a dialog where you enter a name and choose whether to include neutron (event)
-    dispatch. The plugin creates a ready-to-use <code>.rs</code> file at the selected path.
-  ]]></description>
+  <!-- name, version, vendor, description, change-notes, and idea-version
+       are all injected by the patchPluginXml Gradle task from gradle.properties,
+       README.md, and CHANGELOG.md. Do not add them here. -->
 
   <depends>com.intellij.modules.platform</depends>
+  <depends>com.jetbrains.rust</depends>
 
   <actions>
-    <group id="GlocNewGroup" text="New" popup="true">
-      <add-to-group group-id="NewGroup" anchor="last"/>
-      <action
-        id="GlocNewReactorAction"
-        class="com.gloc.plugin.GlocNewReactorAction"
-        text="GLoC Reactor"
-        description="Create a new GLoC Reactor file"/>
-    </group>
+    <action
+      id="GlocNewReactorAction"
+      class="com.gloc.plugin.GlocNewReactorAction"
+      text="GLoC Reactor"
+      description="Create a new GLoC Reactor file"
+      icon="/icon/gloc_icon_16.svg">
+      <add-to-group group-id="NewGroup" anchor="after" relative-to-action="NewDir"/>
+    </action>
   </actions>
 </idea-plugin>

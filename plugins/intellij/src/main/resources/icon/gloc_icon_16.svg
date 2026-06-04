@@ -1,4 +1,4 @@
-<svg viewBox="0 0 510 510" xmlns="http://www.w3.org/2000/svg" width="100%" style="">
+<svg viewBox="0 0 510 510" xmlns="http://www.w3.org/2000/svg" width="16" height="16" style="">
   <defs>
     <radialGradient id="coreGlow" cx="50%" cy="50%" r="50%">
       <stop offset="0%" stop-color="#FFFFFF" stop-opacity="1"/>
