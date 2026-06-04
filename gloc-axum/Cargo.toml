@@ -8,7 +8,7 @@ license.workspace = true
 description = "Axum adapter for GLoC — wire GLoC reactors into Axum shared state with zero boilerplate."
 
 [dependencies]
-gloc = { path = "../gloc" }
+gloc = { path = "../gloc", version = "0.3.0" }
 axum = "0.7"
 tokio = { version = "1", features = ["full"] }
 

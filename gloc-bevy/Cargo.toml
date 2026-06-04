@@ -8,6 +8,6 @@ license.workspace = true
 description = "Bevy integration for GLoC — use GLoC reactors as Bevy Resources with zero boilerplate."
 
 [dependencies]
-gloc = { path = "../gloc" }
+gloc = { path = "../gloc", version = "0.3.0" }
 bevy = { version = "0.15" }
 

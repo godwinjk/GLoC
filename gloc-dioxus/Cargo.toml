@@ -10,5 +10,5 @@ keywords = ["gloc", "dioxus", "state-management", "reactive", "hooks"]
 categories = ["gui", "rust-patterns"]
 
 [dependencies]
-gloc    = { path = "../gloc" }
+gloc    = { path = "../gloc", version = "0.3.0" }
 dioxus  = { version = "0.7" }

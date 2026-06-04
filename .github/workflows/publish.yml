@@ -71,6 +71,7 @@ jobs:
         uses: Swatinem/rust-cache@v2
         with:
           shared-key: "gloc-publish-${{ runner.os }}"
+          cache-on-failure: true
 
       - name: Check formatting
         run: cargo fmt --all -- --check
@@ -103,6 +104,7 @@ jobs:
         uses: Swatinem/rust-cache@v2
         with:
           shared-key: "gloc-publish-${{ runner.os }}"
+          cache-on-failure: true
 
       # Publish in dependency order — crates.io requires deps to exist before
       # dependents can resolve them. `--no-verify` skips the local build check
